@@ -1,0 +1,65 @@
+<h2>MindLink AI 整体架构</h2>
+<p class="subtitle">FastAPI + Next.js 14 双端 · DeepSeek-R1 · bge-large-zh-v1.5</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">系统架构图</div>
+    <div class="mockup-body" style="padding: 24px; background: #0f172a; border-radius: 8px; font-family: monospace; font-size: 13px; line-height: 1.8;">
+
+      <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 20px;">
+        <div style="background: #1e293b; border: 1px solid #475569; border-radius: 8px; padding: 12px 16px; text-align: center;">
+          <div style="color: #94a3b8; margin-bottom: 4px;">🖥 浏览器</div>
+          <div style="color: #60a5fa; font-size: 11px;">Next.js 14 (App Router)</div>
+          <div style="color: #94a3b8; font-size: 11px;">localhost:3000</div>
+        </div>
+      </div>
+
+      <div style="text-align: center; color: #64748b; margin-bottom: 16px;">▼ SSE 流式 / REST API ▼</div>
+
+      <div style="display: flex; justify-content: center; gap: 24px; margin-bottom: 20px;">
+        <div style="background: #1e293b; border: 2px solid #3b82f6; border-radius: 8px; padding: 12px 20px; text-align: center; flex: 1;">
+          <div style="color: #94a3b8; margin-bottom: 6px;">⚡ FastAPI 后端</div>
+          <div style="color: #60a5fa; font-size: 11px;">Python 3.10+</div>
+          <div style="color: #94a3b8; font-size: 11px;">localhost:8000</div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; text-align: center;">
+          <div style="color: #c4b5fd; font-size: 12px;">LlamaIndex</div>
+          <div style="color: #94a3b8; font-size: 10px;">RAG 管线</div>
+        </div>
+        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; text-align: center;">
+          <div style="color: #c4b5fd; font-size: 12px;">ChromaDB</div>
+          <div style="color: #94a3b8; font-size: 10px;">向量存储</div>
+        </div>
+        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; text-align: center;">
+          <div style="color: #c4b5fd; font-size: 12px;">Ollama</div>
+          <div style="color: #94a3b8; font-size: 10px;">DeepSeek + bge-large</div>
+        </div>
+        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 14px; text-align: center;">
+          <div style="color: #c4b5fd; font-size: 12px;">PyMuPDF</div>
+          <div style="color: #94a3b8; font-size: 10px;">PDF 解析 + 页码</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>数据流向</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding: 20px; background: #0f172a; border-radius: 8px; font-family: monospace; font-size: 12px; line-height: 2;">
+      <div style="color: #fbbf24;">📄 文档上传</div>
+      <div style="color: #94a3b8; margin-left: 16px;">浏览器 → Next.js → FastAPI /upload</div>
+      <div style="color: #94a3b8; margin-left: 16px;">→ PyMuPDF 逐页解析（保留页码）→ TextSplitter 分块</div>
+      <div style="color: #94a3b8; margin-left: 16px;">→ OllamaEmbedding(bge-large-zh) → ChromaDB 入库</div>
+      <br>
+      <div style="color: #22d3ee;">💬 知识对话</div>
+      <div style="color: #94a3b8; margin-left: 16px;">用户提问 → FastAPI /chat/stream (SSE)</div>
+      <div style="color: #94a3b8; margin-left: 16px;">→ Embedding(question) → ChromaDB Top-K 检索</div>
+      <div style="color: #94a3b8; margin-left: 16px;">→ 构造 Prompt（含引用元数据）→ Ollama(DeepSeek-R1) 流式生成</div>
+      <div style="color: #94a3b8; margin-left: 16px;">→ SSE 推送 {text_chunk, sources:[], page_number, filename}</div>
+    </div>
+  </div>
+</div>

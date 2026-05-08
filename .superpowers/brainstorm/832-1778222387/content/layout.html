@@ -1,0 +1,172 @@
+<h2>MindLink AI 前端布局设计</h2>
+<p class="subtitle">Next.js 14 App Router · Tailwind CSS · Shadcn UI · 极简学术风</p>
+
+<div class="section">
+  <h3>整体布局：左右分栏</h3>
+  <div class="mockup">
+    <div class="mockup-header">layout.tsx 两栏结构</div>
+    <div class="mockup-body" style="padding: 16px; background: #f8fafc; border-radius: 8px;">
+
+      <div style="display: flex; height: 640px; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+        <!-- Left: Control Center -->
+        <div style="width: 360px; background: #1e293b; color: #e2e8f0; display: flex; flex-direction: column; flex-shrink: 0;">
+          <div style="padding: 20px; border-bottom: 1px solid #334155;">
+            <div style="font-size: 18px; font-weight: 700; color: #f1f5f9;">🧠 MindLink AI</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">个人知识内化系统</div>
+          </div>
+
+          <!-- Upload area -->
+          <div style="margin: 16px; border: 2px dashed #475569; border-radius: 10px; padding: 28px 16px; text-align: center; background: #0f172a;">
+            <div style="font-size: 28px; margin-bottom: 8px;">📁</div>
+            <div style="font-size: 13px; color: #94a3b8;">拖拽文件到此处上传</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">PDF · Markdown · Word · Obsidian</div>
+          </div>
+
+          <!-- Document list -->
+          <div style="margin: 0 16px; flex: 1; overflow: auto;">
+            <div style="font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">已索引文档 (3)</div>
+
+            <div style="background: #0f172a; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; border-left: 3px solid #3b82f6;">
+              <div style="font-size: 13px; color: #e2e8f0;">认知心理学导论.pdf</div>
+              <div style="font-size: 11px; color: #64748b;">42 页 · 126 块 · 2分钟前</div>
+            </div>
+            <div style="background: #1e293b; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; border-left: 3px solid #475569;">
+              <div style="font-size: 13px; color: #cbd5e1;">深度学习笔记.md</div>
+              <div style="font-size: 11px; color: #64748b;">15 块 · 1小时前</div>
+            </div>
+            <div style="background: #1e293b; border-radius: 8px; padding: 10px 12px; margin-bottom: 6px; border-left: 3px solid #475569;">
+              <div style="font-size: 13px; color: #cbd5e1;">研究方法论.docx</div>
+              <div style="font-size: 11px; color: #64748b;">68 块 · 昨天</div>
+            </div>
+          </div>
+
+          <!-- Settings -->
+          <div style="margin: 16px; padding: 16px; background: #0f172a; border-radius: 10px;">
+            <div style="font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;">模型参数</div>
+            <div style="margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                <span style="color: #94a3b8;">Top-K 检索深度</span>
+                <span style="color: #60a5fa;">5</span>
+              </div>
+              <input type="range" min="1" max="20" value="5" style="width: 100%; margin-top: 4px;">
+            </div>
+            <div style="margin-bottom: 10px;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px;">
+                <span style="color: #94a3b8;">Temperature</span>
+                <span style="color: #60a5fa;">0.7</span>
+              </div>
+              <input type="range" min="0" max="2" step="0.1" value="0.7" style="width: 100%; margin-top: 4px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Chat Hub -->
+        <div style="flex: 1; background: #ffffff; display: flex; flex-direction: column; border-left: 1px solid #e2e8f0;">
+          <!-- Chat header -->
+          <div style="padding: 16px 24px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+              <div style="font-size: 15px; font-weight: 600; color: #1e293b;">对话</div>
+              <div style="font-size: 11px; color: #94a3b8;">基于 3 个文档 · 209 个知识块</div>
+            </div>
+            <div style="font-size: 12px; color: #3b82f6;">DeepSeek-R1</div>
+          </div>
+
+          <!-- Messages -->
+          <div style="flex: 1; padding: 24px; overflow: auto; display: flex; flex-direction: column; gap: 20px;">
+            <!-- User message -->
+            <div style="display: flex; justify-content: flex-end;">
+              <div style="background: #eff6ff; border-radius: 14px 14px 4px 14px; padding: 12px 16px; max-width: 70%; font-size: 14px; color: #1e40af;">
+                什么是认知负荷理论？它在教学设计中如何应用？
+              </div>
+            </div>
+
+            <!-- AI response -->
+            <div style="display: flex; flex-direction: column; max-width: 85%;">
+              <div style="background: #f8fafc; border-radius: 4px 14px 14px 14px; padding: 16px 20px; font-size: 14px; color: #334155; line-height: 1.7;">
+                <p style="margin: 0 0 8px;">认知负荷理论（Cognitive Load Theory, CLT）由 John Sweller 于 1988 年提出，核心观点是<b>工作记忆容量有限</b>，教学设计应尽量减少无关认知负荷。</p>
+                <p style="margin: 0 0 8px;">根据 Sweller 的分类，有三种认知负荷：</p>
+                <ul style="margin: 0 0 8px; padding-left: 16px;">
+                  <li><b>内在认知负荷</b> — 由学习材料本身的复杂度决定</li>
+                  <li><b>外在认知负荷</b> — 由教学设计不当引起</li>
+                  <li><b>相关认知负荷</b> — 用于构建图式的有效加工</li>
+                </ul>
+              </div>
+
+              <!-- Source citations -->
+              <div style="margin-top: 8px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;">
+                <div style="padding: 10px 14px; background: #f8fafc; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                  <span>📖</span> 参考来源 (3) <span style="margin-left: auto;">▼</span>
+                </div>
+                <div style="padding: 10px 14px; font-size: 12px; background: white;">
+                  <div style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                    <div style="color: #1e293b; font-weight: 500;">认知心理学导论.pdf · 第 12 页</div>
+                    <div style="color: #64748b; margin-top: 2px;">"认知负荷理论假设人类的认知架构由工作记忆和长时记忆组成..."</div>
+                    <div style="color: #94a3b8; font-size: 11px; margin-top: 2px;">相关度: 0.92</div>
+                  </div>
+                  <div style="padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                    <div style="color: #1e293b; font-weight: 500;">认知心理学导论.pdf · 第 15 页</div>
+                    <div style="color: #64748b; margin-top: 2px;">"Sweller 等人提出了多种降低外在认知负荷的教学设计策略..."</div>
+                    <div style="color: #94a3b8; font-size: 11px; margin-top: 2px;">相关度: 0.87</div>
+                  </div>
+                  <div style="padding: 8px 0;">
+                    <div style="color: #1e293b; font-weight: 500;">研究方法论.docx · 第 3 页</div>
+                    <div style="color: #64748b; margin-top: 2px;">"在实验设计中，认知负荷的测量通常采用双重任务范式..."</div>
+                    <div style="color: #94a3b8; font-size: 11px; margin-top: 2px;">相关度: 0.76</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat input -->
+          <div style="padding: 16px 24px; border-top: 1px solid #f1f5f9; display: flex; gap: 10px;">
+            <input placeholder="基于你的知识库提问..." style="flex: 1; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 14px; outline: none;">
+            <button style="background: #1e293b; color: white; border: none; border-radius: 10px; padding: 12px 20px; font-size: 14px; cursor: pointer;">发送</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>组件树</h3>
+  <div class="mockup-body" style="padding: 20px; background: #0f172a; border-radius: 8px; font-family: monospace; font-size: 13px; line-height: 2;">
+    <div style="color: #fbbf24;">layout.tsx (两栏容器)</div>
+    <div style="margin-left: 20px; color: #94a3b8;">├── <span style="color: #818cf8;">Sidebar.tsx</span> —— 控制中心</div>
+    <div style="margin-left: 40px; color: #64748b;">│   ├── FileUploader.tsx —— 拖拽上传</div>
+    <div style="margin-left: 40px; color: #64748b;">│   ├── DocumentList.tsx —— 知识库状态</div>
+    <div style="margin-left: 40px; color: #64748b;">│   └── ModelParams.tsx —— Top-K / Temp 滑块</div>
+    <div style="margin-left: 20px; color: #94a3b8;">└── <span style="color: #818cf8;">ChatHub.tsx</span> —— 主交互区</div>
+    <div style="margin-left: 40px; color: #64748b;">├── ChatMessages.tsx —— 消息列表</div>
+    <div style="margin-left: 40px; color: #64748b;">│   └── SourceCard.tsx —— 可折叠溯源</div>
+    <div style="margin-left: 40px; color: #64748b;">└── ChatInput.tsx —— 输入框</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>视觉规范</h3>
+  <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+    <div style="flex: 1; min-width: 160px; background: #1e293b; border-radius: 8px; padding: 16px; text-align: center;">
+      <div style="width: 40px; height: 40px; border-radius: 8px; background: #1e293b; margin: 0 auto 8px; border: 1px solid #475569;"></div>
+      <div style="font-size: 12px; color: #94a3b8;">主背景</div>
+      <div style="font-size: 11px; color: #64748b;">slate-900</div>
+    </div>
+    <div style="flex: 1; min-width: 160px; background: white; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #e2e8f0;">
+      <div style="width: 40px; height: 40px; border-radius: 8px; background: #f8fafc; margin: 0 auto 8px; border: 1px solid #e2e8f0;"></div>
+      <div style="font-size: 12px; color: #334155;">对话区背景</div>
+      <div style="font-size: 11px; color: #94a3b8;">slate-50</div>
+    </div>
+    <div style="flex: 1; min-width: 160px; background: #0f172a; border-radius: 8px; padding: 16px; text-align: center;">
+      <div style="width: 40px; height: 40px; border-radius: 8px; background: #3b82f6; margin: 0 auto 8px;"></div>
+      <div style="font-size: 12px; color: #94a3b8;">强调色</div>
+      <div style="font-size: 11px; color: #64748b;">blue-500</div>
+    </div>
+    <div style="flex: 1; min-width: 160px; background: white; border-radius: 8px; padding: 16px; text-align: center; border: 1px solid #e2e8f0;">
+      <div style="width: 40px; height: 40px; border-radius: 8px; background: #f1f5f9; margin: 0 auto 8px; font-size: 20px; display: flex; align-items: center; justify-content: center;">Ag</div>
+      <div style="font-size: 12px; color: #334155;">正文 / 图标</div>
+      <div style="font-size: 11px; color: #94a3b8;">Inter + Lucide</div>
+    </div>
+  </div>
+</div>

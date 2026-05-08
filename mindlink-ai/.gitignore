@@ -1,0 +1,9 @@
+node_modules/
+.next/
+data/chroma/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+uploads/*
+!uploads/.gitkeep
+.superpowers/
