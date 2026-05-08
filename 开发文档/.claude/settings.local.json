@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"E:/COLIN/vibecoding/mindlink-ai/src/app/api/documents/[id]/reindex\")",
+      "Bash(mkdir -p \"E:/COLIN/vibecoding/mindlink-ai/src/app/api/summary/[id]\")",
+      "Bash(npm install:*)"
+    ]
+  }
+}

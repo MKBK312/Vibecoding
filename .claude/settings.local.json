@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Bash(mkdir -p ~/.claude/skills)",
+      "Bash(cp -r skill/* ~/.claude/skills/)",
+      "Bash(cp -r superpowers/skills/* ~/.claude/skills/)",
+      "Bash(iconv -f gbk -t utf-8 \"E:/COLIN/vibecoding/'知识内化RAG系统原始提示词.txt'\")",
+      "Bash(python:*)",
+      "Bash(ls *.txt)",
+      "Bash(python3:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

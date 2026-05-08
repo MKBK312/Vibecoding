@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sandbox MVP</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #34495e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        h1 { color: #ecf0f1; margin-bottom: 20px; }
+
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        button {
+            padding: 8px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: transform 0.1s;
+        }
+
+        button:hover { transform: scale(1.05); }
+        button.active { border: 3px solid white; box-shadow: 0 0 8px rgba(255,255,255,0.5); }
+
+        .sand { background: rgb(255,255,0); color: #2c3e50; }
+        .water { background: rgb(0,0,255); color: white; }
+        .wood { background: rgb(139,69,19); color: white; }
+        .fire { background: rgb(255,0,0); color: white; }
+        .stone { background: rgb(128,128,128); color: white; }
+        .brick { background: rgb(178,34,34); color: white; }
+        .ice { background: rgb(173,216,230); color: #2c3e50; }
+        .steam { background: rgb(200,200,200); color: #2c3e50; }
+        .oil { background: rgb(50,50,50); color: white; }
+        .lava { background: rgb(255,69,0); color: white; }
+        .acid { background: rgb(0,255,0); color: black; }
+        .snow { background: rgb(255,250,250); color: #2c3e50; }
+        .leaves { background: rgb(107,142,35); color: white; }
+        .grass { background: rgb(34,139,34); color: white; }
+        .clear { background: rgb(100,100,100); color: white; }
+
+        canvas {
+            border: 4px solid #2c3e50;
+            border-radius: 4px;
+            cursor: crosshair;
+            background: rgb(0,0,0);
+        }
+
+        .hint { color: #bdc3c7; margin-top: 15px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>Sandbox MVP</h1>
+
+    <div class="controls">
+        <button class="sand active" data-type="1">Sand (A)</button>
+        <button class="water" data-type="2">Water (S)</button>
+        <button class="wood" data-type="3">Wood (D)</button>
+        <button class="fire" data-type="4">Fire (F)</button>
+        <button class="stone" data-type="8">Stone (P)</button>
+        <button class="brick" data-type="9">Brick (B)</button>
+        <button class="ice" data-type="10">Ice (I)</button>
+        <button class="steam" data-type="11">Steam (R)</button>
+        <button class="oil" data-type="12">Oil (O)</button>
+        <button class="lava" data-type="14">Lava (L)</button>
+        <button class="acid" data-type="15">Acid (X)</button>
+        <button class="snow" data-type="16">Snow (N)</button>
+        <button class="leaves" data-type="17">Leaves (E)</button>
+        <button class="grass" data-type="18">Grass (G)</button>
+        <button class="clear" id="clearBtn">Clear (C)</button>
+    </div>
+
+    <canvas id="canvas" width="800" height="560"></canvas>
+
+    <p class="hint">Click to place | A/S/D/F/P/B/I/R/O/L/X/N/E/G switch | C = Clear</p>
+
+    <script>
+        const CELL_SIZE = 10;
+        const GRID_WIDTH = 80;
+        const GRID_HEIGHT = 56;
+        const UPDATE_INTERVAL = 50;
+        const BURN_TIME = 3000;
+        const FIRE_LIFE = 500;
+        const BURNING_OIL_LIFE = 2000;
+        const LEAVES_DECAY_TIME = 30000;
+        const GRASS_GROW_INTERVAL = 2000;
+
+        const EMPTY = 0, SAND = 1, WATER = 2, WOOD = 3, FIRE = 4, BURNING_WOOD = 5, MUD = 6, ASH = 7;
+        const STONE = 8, BRICK = 9, ICE = 10, STEAM = 11, OIL = 12, BURNING_OIL = 13, LAVA = 14;
+        const ACID = 15, SNOW = 16, LEAVES = 17, GRASS = 18;
+
+        const COLORS = [
+            "rgb(0,0,0)", "rgb(255,255,0)", "rgb(0,0,255)", "rgb(255,140,0)", "rgb(255,0,0)",
+            "rgb(255,0,0)", "rgb(139,90,43)", "rgb(50,50,50)", "rgb(128,128,128)",
+            "rgb(178,34,34)", "rgb(173,216,230)", "rgb(200,200,200)", "rgb(50,50,50)",
+            "rgb(255,100,0)", "rgb(255,69,0)", "rgb(0,255,0)", "rgb(255,250,250)",
+            "rgb(107,142,35)", "rgb(34,139,34)"
+        ];
+
+        let grid = new Uint8Array(GRID_WIDTH * GRID_HEIGHT);
+        let burnTimers = new Map();
+        let burningOilTimers = new Map();
+        let leavesTimers = new Map();
+        let grassTimers = new Map();
+        let sandFallDelay = new Map();
+        let fireTimers = new Map();
+
+        let currentElement = SAND;
+        let isDrawing = false;
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        const btns = document.querySelectorAll("button[data-type]");
+        btns.forEach(function(btn) {
+            btn.addEventListener("click", function() {
+                currentElement = parseInt(this.getAttribute("data-type"));
+                btns.forEach(function(b) { b.classList.remove("active"); });
+                this.classList.add("active");
+            });
+        });
+
+        document.getElementById("clearBtn").addEventListener("click", function() {
+            grid.fill(0);
+            burnTimers.clear();
+            burningOilTimers.clear();
+            leavesTimers.clear();
+            grassTimers.clear();
+            sandFallDelay.clear();
+            fireTimers.clear();
+        });
+
+        canvas.addEventListener("mousedown", function(e) {
+            isDrawing = true;
+            placeElement(e);
+        });
+        canvas.addEventListener("mousemove", function(e) {
+            if (isDrawing) placeElement(e);
+        });
+        canvas.addEventListener("mouseup", function() { isDrawing = false; });
+        canvas.addEventListener("mouseleave", function() { isDrawing = false; });
+
+        document.addEventListener("keydown", function(e) {
+            const key = e.key.toLowerCase();
+            switch(key) {
+                case "a": currentElement = SAND; break;
+                case "s": currentElement = WATER; break;
+                case "d": currentElement = WOOD; break;
+                case "f": currentElement = FIRE; break;
+                case "p": currentElement = STONE; break;
+                case "b": currentElement = BRICK; break;
+                case "i": currentElement = ICE; break;
+                case "r": currentElement = STEAM; break;
+                case "o": currentElement = OIL; break;
+                case "l": currentElement = LAVA; break;
+                case "x": currentElement = ACID; break;
+                case "n": currentElement = SNOW; break;
+                case "e": currentElement = LEAVES; break;
+                case "g": currentElement = GRASS; break;
+                case "c":
+                    grid.fill(0);
+                    burnTimers.clear();
+                    burningOilTimers.clear();
+                    leavesTimers.clear();
+                    grassTimers.clear();
+                    sandFallDelay.clear();
+                    fireTimers.clear();
+                    break;
+            }
+            btns.forEach(function(btn) {
+                btn.classList.remove("active");
+                if (parseInt(btn.getAttribute("data-type")) === currentElement) {
+                    btn.classList.add("active");
+                }
+            });
+        });
+
+        function placeElement(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+
+            if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
+                const idx = y * GRID_WIDTH + x;
+                const target = grid[idx];
+
+                if (target === WOOD && currentElement === FIRE) {
+                    grid[idx] = BURNING_WOOD;
+                    burnTimers.set(x + "," + y, performance.now());
+                    return;
+                }
+
+                if (target === WOOD || target === BURNING_WOOD || target === FIRE || target === MUD ||
+                    target === ASH || target === STONE || target === BRICK || target === ICE ||
+                    target === BURNING_OIL || target === LAVA || target === SNOW || target === LEAVES || target === GRASS) {
+                    return;
+                }
+
+                if (currentElement === ACID) {
+                    if (target === FIRE || target === LAVA || target === BURNING_OIL) return;
+                    grid[idx] = ACID;
+                    return;
+                }
+
+                if (currentElement === OIL) {
+                    if (target === BURNING_WOOD || target === BURNING_OIL || target === FIRE || target === LAVA) return;
+                    grid[idx] = OIL;
+                    return;
+                }
+
+                if (currentElement === LAVA) {
+                    if (target === WOOD || target === WATER || target === BURNING_WOOD || target === FIRE) return;
+                    grid[idx] = LAVA;
+                    return;
+                }
+
+                if (currentElement === STEAM) {
+                    grid[idx] = STEAM;
+                    return;
+                }
+
+                grid[idx] = currentElement;
+                if (currentElement === FIRE) {
+                    fireTimers.set(x + "," + y, performance.now());
+                }
+            }
+        }
+
+        function render() {
+            ctx.fillStyle = COLORS[EMPTY];
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    const type = grid[y * GRID_WIDTH + x];
+                    if (type !== EMPTY) {
+                        ctx.fillStyle = COLORS[type];
+                        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1);
+                    }
+                }
+            }
+        }
+
+        function update(timestamp) {
+            // Clear fire at bottom
+            for (let x = 0; x < GRID_WIDTH; x++) {
+                if (grid[(GRID_HEIGHT - 1) * GRID_WIDTH + x] === FIRE) {
+                    fireTimers.delete(x + "," + (GRID_HEIGHT - 1));
+                    grid[(GRID_HEIGHT - 1) * GRID_WIDTH + x] = EMPTY;
+                }
+            }
+
+            // Fire disappears
+            fireTimers.forEach(function(startTime, key) {
+                if (timestamp - startTime >= FIRE_LIFE) {
+                    const parts = key.split(",");
+                    const x = parseInt(parts[0]), y = parseInt(parts[1]);
+                    if (grid[y * GRID_WIDTH + x] === FIRE) {
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    }
+                    fireTimers.delete(key);
+                }
+            });
+
+            // Burning wood becomes ash
+            burnTimers.forEach(function(startTime, key) {
+                if (timestamp - startTime >= BURN_TIME) {
+                    const parts = key.split(",");
+                    const x = parseInt(parts[0]), y = parseInt(parts[1]);
+                    if (grid[y * GRID_WIDTH + x] === BURNING_WOOD) {
+                        grid[y * GRID_WIDTH + x] = ASH;
+                    }
+                    burnTimers.delete(key);
+                }
+            });
+
+            // Burning oil disappears
+            burningOilTimers.forEach(function(startTime, key) {
+                if (timestamp - startTime >= BURNING_OIL_LIFE) {
+                    const parts = key.split(",");
+                    const x = parseInt(parts[0]), y = parseInt(parts[1]);
+                    if (grid[y * GRID_WIDTH + x] === BURNING_OIL) {
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    }
+                    burningOilTimers.delete(key);
+                }
+            });
+
+            // Fire spreads to wood
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === BURNING_WOOD) {
+                        for (let dy = -1; dy <= 1; dy++) {
+                            for (let dx = -1; dx <= 1; dx++) {
+                                if (dx === 0 && dy === 0) continue;
+                                const nx = x + dx, ny = y + dy;
+                                if (nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT) {
+                                    if (grid[ny * GRID_WIDTH + nx] === WOOD) {
+                                        const key = nx + "," + ny;
+                                        if (!burnTimers.has(key)) {
+                                            grid[ny * GRID_WIDTH + nx] = BURNING_WOOD;
+                                            burnTimers.set(key, timestamp);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sand falls
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === SAND) sandFall(x, y);
+                }
+            }
+
+            // Mud falls
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === MUD) mudFall(x, y);
+                }
+            }
+
+            // Water flows
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === WATER) waterFlow(x, y);
+                }
+            }
+
+            // Steam rises
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === STEAM) steamRise(x, y);
+                }
+            }
+
+            // Oil flows
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === OIL) oilFlow(x, y);
+                }
+            }
+
+            // Oil ignites
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === OIL && checkAdjacentFire(x, y)) {
+                        grid[y * GRID_WIDTH + x] = BURNING_OIL;
+                        burningOilTimers.set(x + "," + y, timestamp);
+                    }
+                }
+            }
+
+            // Lava flows
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === LAVA) lavaFlow(x, y);
+                }
+            }
+
+            // Lava + water = stone + steam
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === LAVA) {
+                        const adj = checkAdjacentType(x, y, WATER);
+                        if (adj) {
+                            grid[y * GRID_WIDTH + x] = STONE;
+                            grid[adj.y * GRID_WIDTH + adj.x] = STEAM;
+                        }
+                    }
+                }
+            }
+
+            // Lava ignites wood
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === LAVA) {
+                        const adj = checkAdjacentType(x, y, WOOD);
+                        if (adj) {
+                            grid[adj.y * GRID_WIDTH + adj.x] = BURNING_WOOD;
+                            burnTimers.set(adj.x + "," + adj.y, timestamp);
+                        }
+                    }
+                }
+            }
+
+            // Acid flows
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === ACID) acidFlow(x, y);
+                }
+            }
+
+            // Acid dissolves
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === ACID) acidDissolve(x, y);
+                }
+            }
+
+            // Snow falls
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === SNOW) snowFall(x, y);
+                }
+            }
+
+            // Snow melts
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === SNOW) snowMelt(x, y);
+                }
+            }
+
+            // Leaves fall
+            for (let y = GRID_HEIGHT - 1; y >= 0; y--) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === LEAVES) leavesFall(x, y);
+                }
+            }
+
+            // Grass grows
+            for (let y = 0; y < GRID_HEIGHT; y++) {
+                for (let x = 0; x < GRID_WIDTH; x++) {
+                    if (grid[y * GRID_WIDTH + x] === GRASS) grassGrow(x, y, timestamp);
+                }
+            }
+        }
+
+        function checkAdjacentFire(x, y) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT) {
+                        const c = grid[ny * GRID_WIDTH + nx];
+                        if (c === FIRE || c === BURNING_WOOD || c === BURNING_OIL) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function checkAdjacentType(x, y, type) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT) {
+                        if (grid[ny * GRID_WIDTH + nx] === type) return {x: nx, y: ny};
+                    }
+                }
+            }
+            return null;
+        }
+
+        function sandFall(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = SAND;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === WATER) {
+                grid[(y + 1) * GRID_WIDTH + x] = MUD;
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = SAND;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const diagX = x + dir;
+                if (diagX >= 0 && diagX < GRID_WIDTH && y < GRID_HEIGHT - 1) {
+                    const diag = grid[(y + 1) * GRID_WIDTH + diagX];
+                    if (diag === EMPTY) {
+                        grid[(y + 1) * GRID_WIDTH + diagX] = SAND;
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    } else if (diag === WATER) {
+                        grid[(y + 1) * GRID_WIDTH + diagX] = MUD;
+                        grid[y * GRID_WIDTH + x] = WATER;
+                    }
+                }
+            }
+        }
+
+        function mudFall(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = MUD;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === WATER) {
+                grid[(y + 1) * GRID_WIDTH + x] = MUD;
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = MUD;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            }
+        }
+
+        function waterFlow(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = WATER;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = WATER;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === FIRE) {
+                fireTimers.delete(x + "," + (y + 1));
+                grid[(y + 1) * GRID_WIDTH + x] = WATER;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const diagX = x + dir;
+                if (diagX >= 0 && diagX < GRID_WIDTH && y < GRID_HEIGHT - 1) {
+                    const diag = grid[(y + 1) * GRID_WIDTH + diagX];
+                    if (diag === EMPTY) {
+                        grid[(y + 1) * GRID_WIDTH + diagX] = WATER;
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    } else if (diag === FIRE) {
+                        fireTimers.delete(diagX + "," + (y + 1));
+                        grid[(y + 1) * GRID_WIDTH + diagX] = WATER;
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    }
+                }
+            }
+        }
+
+        function steamRise(x, y) {
+            if (y > 0 && grid[(y - 1) * GRID_WIDTH + x] === EMPTY) {
+                grid[(y - 1) * GRID_WIDTH + x] = STEAM;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (y === 0) {
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const newX = x + dir;
+                if (newX >= 0 && newX < GRID_WIDTH && grid[(y - 1) * GRID_WIDTH + newX] === EMPTY) {
+                    grid[(y - 1) * GRID_WIDTH + newX] = STEAM;
+                    grid[y * GRID_WIDTH + x] = EMPTY;
+                }
+            }
+        }
+
+        function oilFlow(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === WATER) {
+                grid[(y + 1) * GRID_WIDTH + x] = OIL;
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = OIL;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = OIL;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            }
+        }
+
+        function lavaFlow(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = LAVA;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = LAVA;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const diagX = x + dir;
+                if (diagX >= 0 && diagX < GRID_WIDTH && y < GRID_HEIGHT - 1) {
+                    const diag = grid[(y + 1) * GRID_WIDTH + diagX];
+                    if (diag === EMPTY) {
+                        grid[(y + 1) * GRID_WIDTH + diagX] = LAVA;
+                        grid[y * GRID_WIDTH + x] = EMPTY;
+                    }
+                }
+            }
+        }
+
+        function acidFlow(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = ACID;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === WATER) {
+                grid[(y + 1) * GRID_WIDTH + x] = ACID;
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = ACID;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            }
+        }
+
+        function acidDissolve(x, y) {
+            const dirs = [[x-1,y], [x+1,y], [x,y-1], [x,y+1]];
+            for (const [cx, cy] of dirs) {
+                if (cx < 0 || cx >= GRID_WIDTH || cy < 0 || cy >= GRID_HEIGHT) continue;
+                const c = grid[cy * GRID_WIDTH + cx];
+                if (c === SAND || c === WOOD || c === MUD || c === ASH) {
+                    grid[cy * GRID_WIDTH + cx] = EMPTY;
+                } else if (c === LAVA) {
+                    grid[cy * GRID_WIDTH + cx] = EMPTY;
+                    grid[y * GRID_WIDTH + x] = EMPTY;
+                } else if (c === ICE) {
+                    grid[cy * GRID_WIDTH + cx] = WATER;
+                }
+            }
+        }
+
+        function snowFall(x, y) {
+            if (y >= GRID_HEIGHT - 1) { grid[y * GRID_WIDTH + x] = EMPTY; return; }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = SNOW;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            } else if (below === WATER || below === LAVA) {
+                grid[y * GRID_WIDTH + x] = WATER;
+                if (below === LAVA) grid[(y + 1) * GRID_WIDTH + x] = STEAM;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = SNOW;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            }
+        }
+
+        function snowMelt(x, y) {
+            if (checkAdjacentFire(x, y)) {
+                grid[y * GRID_WIDTH + x] = WATER;
+            } else {
+                const adj = checkAdjacentType(x, y, LAVA);
+                if (adj) grid[y * GRID_WIDTH + x] = STEAM;
+            }
+        }
+
+        function leavesFall(x, y) {
+            if (checkAdjacentFire(x, y)) {
+                grid[y * GRID_WIDTH + x] = FIRE;
+                fireTimers.set(x + "," + y, performance.now());
+                return;
+            }
+            if (y >= GRID_HEIGHT - 1) {
+                if (!leavesTimers.has(x + "," + y)) {
+                    leavesTimers.set(x + "," + y, performance.now());
+                }
+                return;
+            }
+            const below = grid[(y + 1) * GRID_WIDTH + x];
+            if (below === EMPTY) {
+                grid[(y + 1) * GRID_WIDTH + x] = LEAVES;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+                leavesTimers.delete(x + "," + (y + 1));
+            } else if (below === WATER || below === LAVA) {
+                grid[y * GRID_WIDTH + x] = WATER;
+                if (below === LAVA) grid[(y + 1) * GRID_WIDTH + x] = STEAM;
+            } else if (below === ASH) {
+                grid[(y + 1) * GRID_WIDTH + x] = LEAVES;
+                grid[y * GRID_WIDTH + x] = EMPTY;
+            }
+        }
+
+        function grassGrow(x, y, timestamp) {
+            if (checkAdjacentFire(x, y)) {
+                grid[y * GRID_WIDTH + x] = FIRE;
+                fireTimers.set(x + "," + y, timestamp);
+                return;
+            }
+            const hasWater = checkAdjacentType(x, y, WATER);
+            if (!hasWater) return;
+
+            const key = x + "," + y;
+            const lastGrow = grassTimers.get(key) || 0;
+            if (timestamp - lastGrow < GRASS_GROW_INTERVAL) return;
+            grassTimers.set(key, timestamp);
+
+            const dirs = [[-1,0], [1,0], [0,-1], [0,1]];
+            for (const [dx, dy] of dirs) {
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < GRID_WIDTH && ny >= 0 && ny < GRID_HEIGHT) {
+                    if (grid[ny * GRID_WIDTH + nx] === EMPTY && checkAdjacentType(nx, ny, WATER) && Math.random() < 0.3) {
+                        grid[ny * GRID_WIDTH + nx] = GRASS;
+                        grassTimers.set(nx + "," + ny, timestamp);
+                    }
+                }
+            }
+        }
+
+        let lastUpdate = 0;
+        function gameLoop(timestamp) {
+            if (timestamp - lastUpdate >= UPDATE_INTERVAL) {
+                update(timestamp);
+                render();
+                lastUpdate = timestamp;
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

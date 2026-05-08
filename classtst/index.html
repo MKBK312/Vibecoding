@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Element Physics Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 1px solid #333;
+            background-color: #000;
+            display: block;
+            margin: 0 auto 20px;
+        }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            margin: 0 5px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .selected {
+            background-color: #4CAF50;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Element Physics Simulation</h1>
+    <div class="controls">
+        <button id="wood" class="selected">Wood</button>
+        <button id="water">Water</button>
+        <button id="sand">Sand</button>
+        <button id="fire">Fire</button>
+    </div>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <div style="text-align: center;">
+        <p>Click on the canvas to place elements</p>
+        <p>Use buttons to select element type</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
