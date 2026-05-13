@@ -1,0 +1,12 @@
+# Ollama models (large binary files)
+Ollama/
+
+# Claude Code local settings
+.claude/
+
+# Superpowers skills
+superpowers/
+
+# OS files
+.DS_Store
+Thumbs.db

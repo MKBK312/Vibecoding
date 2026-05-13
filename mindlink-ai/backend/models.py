@@ -51,6 +51,7 @@ class ConfigResponse(BaseModel):
     """系统配置"""
     top_k: int
     temperature: float
+    llm_backend: str       # "claude" or "ollama"
     llm_model: str
     embedding_model: str
     total_documents: int

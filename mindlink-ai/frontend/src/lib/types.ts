@@ -39,6 +39,7 @@ export interface DeleteResponse {
 export interface ConfigResponse {
   top_k: number;
   temperature: number;
+  llm_backend: string;
   llm_model: string;
   embedding_model: string;
   total_documents: number;

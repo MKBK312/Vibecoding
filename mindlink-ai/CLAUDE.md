@@ -5,70 +5,92 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev      # Start dev server (Next.js)
-npm run build    # Production build
-npm run start    # Start production server
-npm run lint     # Run ESLint
+# 0. Start Ollama (required for embedding + LLM)
+export OLLAMA_MODELS="E:/COLIN/vibecoding/Ollama"
+E:/Ollama/ollama.exe serve
+
+# 1. Backend (FastAPI, port 8000)
+cd backend
+# For Ollama backend (default MVP):
+LLM_BACKEND=ollama OLLAMA_BASE_URL=http://localhost:11434 venv/Scripts/python -m uvicorn main:app --reload --port 8000
+# For Claude/DeepSeek backend (needs valid ANTHROPIC_AUTH_TOKEN):
+ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic ANTHROPIC_MODEL=DeepSeek-V4-Pro[1m] venv/Scripts/python -m uvicorn main:app --reload --port 8000
+
+# 2. Frontend (Next.js, port 3000)
+cd frontend && npm run dev
 ```
 
 No test suite is configured yet.
 
 ## Architecture
 
-MindLink AI is a local personal knowledge RAG system — upload PDF/Markdown files, chat with AI about them, with source citations. Built as a **Next.js 14 App Router** full-stack monolith.
+MindLink AI is a local personal knowledge RAG system — upload PDF/Markdown/TXT files, chat with AI about them, with source citations. **Split architecture: FastAPI backend + Next.js frontend.**
 
 ### Data flow
 
 ```
-Browser file upload → PDF.js (client) / Markdown parse (server)
-  → chunker (500-800 chars/chunk)
-  → bge-small-zh embedding (@xenova/transformers, server-side)
+Browser file upload → FastAPI /api/upload
+  → PyMuPDF (PDF) / plain read (MD, TXT)
+  → chunker (400 chars/chunk, 60 char overlap)
+  → bge-large-zh-v1.5 embedding (Ollama, via llama-index)
   → ChromaDB (local, ./data/chroma/)
-  → User question → embed → ChromaDB Top-K search
-  → Claude API (streaming SSE) → answer with [file:page] citations
+  → User question → embed → ChromaDB Top-K cosine search
+  → LLM (Ollama qwen2.5:3b or Claude API → DeepSeek, streaming SSE)
+  → answer with [file:page] citations
 ```
+
+### LLM Backend
+
+- **Default (MVP)**: Ollama local `qwen2.5:3b` (1.9GB, good instruction-following)
+- **Fallback**: Ollama `deepseek-r1:1.5b` (1.1GB, verbose/thinking-tokens)
+- **Optional**: Claude-compatible API (DeepSeek) via `ANTHROPIC_BASE_URL`
+- **Switch**: Set env `LLM_BACKEND=ollama` or `LLM_BACKEND=claude`
+- Claude API requires valid `ANTHROPIC_AUTH_TOKEN` (currently needs new key)
 
 ### Key directories
 
 ```
-src/
-├── app/api/           # API Routes
-│   ├── documents/     # Upload (POST), list (GET)
-│   ├── documents/[id]/# Get single doc (GET), delete (DELETE)
-│   ├── search/        # Vector search (POST)
-│   ├── chat/stream/   # Streaming chat + Claude (POST, SSE)
-│   ├── summary/[id]/  # Generate structured summary (POST)
-│   └── config/        # System config (GET)
-├── lib/
-│   ├── types.ts       # All TypeScript interfaces
-│   ├── constants.ts   # Magic values (Top-K range, chunk sizes, API routes)
-│   ├── db/chroma.ts   # ChromaClient singleton + getOrCreateCollection
-│   ├── db/collections.ts  # CRUD for documents & chunks collections
-│   ├── embedding/encoder.ts  # bge-small-zh via @xenova/transformers pipeline
-│   ├── embedding/search.ts   # semanticSearch() — embed query → ChromaDB query
-│   └── parser/        # pdf.ts (pdf.js), markdown.ts (marked), chunker.ts
-└── components/
-    ├── chat/          # ChatArea, ChatInput, MessageBubble, SourceCitations
-    ├── documents/     # FileUploader, DocumentList, DocumentCard, StatsPanel
-    ├── layout/        # Sidebar, SettingsModal
-    └── ui/            # Button, Card, Input, Modal, Select (all forwardRef)
+backend/
+├── main.py            # FastAPI app (upload, documents, config, chat/stream)
+├── models.py          # Pydantic models (ChatRequest, DocumentInfo, ConfigResponse)
+├── config.py          # Constants (ChromaDB path, models, chunk params, API keys)
+├── pipeline.py        # Document indexing (parse → chunk → embed → store)
+├── engine.py          # RAG chat (embed query → search → prompt → SSE stream)
+└── requirements.txt   # Python dependencies
+
+frontend/
+├── next.config.js     # Rewrites /api/* → localhost:8000
+└── src/
+    ├── app/
+    │   ├── page.tsx        # Main SPA (sidebar + chat area)
+    │   ├── layout.tsx      # Root layout (zh-CN)
+    │   └── globals.css     # Tailwind + markdown styles
+    └── lib/
+        ├── types.ts        # TypeScript interfaces (ConfigResponse has llm_backend)
+        └── api.ts          # API client (fetch wrapper)
 ```
 
-### Data model (ChromaDB)
+### Data model
 
-Two collections: **`documents`** (metadata as JSON strings) and **`chunks`** (text content with `document_id`, `page_number`, `chunk_index` in metadata). Search results join back to documents by `document_id` to get titles.
+- **Document metadata**: JSON file at `data/chroma/doc_meta.json` (doc_id → filename, source_type, page_count, chunk_count, created_at)
+- **Vector chunks**: ChromaDB collection `mindlink_docs` with cosine distance, metadata includes `document_id`, `filename`, `page_number`, `chunk_index`
 
-### Path alias
+### Frontend → Backend communication
 
-`@/*` maps to `./src/*` (configured in tsconfig.json).
+Next.js `rewrites()` in `next.config.js` proxies all `/api/*` requests to `http://localhost:8000/api/*`. The frontend fetches `/api/documents`, `/api/upload`, `/api/chat/stream` etc. without absolute URLs.
 
 ## Important implementation details
 
-- **ChromaDB compatibility**: `next.config.js` aliases `canvas` and `encoding` to `false` in webpack. Do not remove these — ChromaDB's Node client references them unnecessarily.
-- **PDF worker**: pdf.js worker is loaded from CDN (`cdnjs.cloudflare.com`), not a local copy. This means PDF parsing requires network access.
-- **API key storage**: The Anthropic API key is stored in `localStorage` (client-side), set via SettingsModal. The streaming chat route (`chat/stream/route.ts`) tries to read it via `getApiKey()` which calls `localStorage.getItem()` — this will always return empty string server-side. The actual API key must be set via `ANTHROPIC_API_KEY` environment variable for server-side use.
-- **No .gitignore**: There is no `.gitignore` file — `node_modules/`, `.next/`, and `data/chroma/` are not excluded. This is a known issue.
-- **Top-K is not wired through**: The Sidebar has a Top-K selector, but `ChatArea` does not pass it to `/api/chat/stream`. The stream route uses `DEFAULT_TOP_K` (5) regardless of user selection.
+- **Two servers required**: Backend (uvicorn, port 8000) and frontend (next dev, port 3000) must both be running.
+- **Ollama required**: Embedding `modelscope.cn/Embedding-GGUF/bge-large-zh-v1.5:latest` + LLM `qwen2.5:3b`. Pull with `ollama pull <model>`.
+- **Ollama models path**: `E:/COLIN/vibecoding/Ollama/`. Set `OLLAMA_MODELS` env before starting Ollama.
+- **Python venv**: Located at `backend/venv/`. Use `venv/Scripts/python` directly (Windows).
+- **ChromaDB**: Persistent storage at `../data/chroma/` (relative to backend/). Auto-created on first run.
+- **PDF parsing**: Uses PyMuPDF (fitz). Text-based PDFs only; scanned/image PDFs will fail.
+- **Embedding**: Manual `embed_model.get_text_embedding()` called explicitly (not OllamaEmbeddingFunction auto-embed).
+- **Streaming**: SSE events have types: `text` (content delta), `sources` (citations), `done` (end), `error` (failure). Each line: `data: {"type":"...","content":"...","sources":[...]}\n\n`.
+- **ConfigResponse** includes `llm_backend` field — frontend dynamically renders model name from config.
+- **System prompt** (engine.py `_build_system_prompt`): tells model to ignore irrelevant chunks and only answer with directly relevant info.
 
 ## Design documents
 

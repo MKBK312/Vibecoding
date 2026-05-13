@@ -433,7 +433,11 @@ export default function Home() {
             </p>
           </div>
           <span className="text-[11px] text-blue-500 font-medium bg-blue-50 px-2.5 py-1 rounded-md">
-            DeepSeek-R1
+            {config
+              ? config.llm_backend === "claude"
+                ? "Claude API"
+                : config.llm_model
+              : "—"}
           </span>
         </header>
 

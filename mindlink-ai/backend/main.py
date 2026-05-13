@@ -30,6 +30,7 @@ from config import (
     DEFAULT_TEMPERATURE,
     LLM_MODEL,
     EMBEDDING_MODEL,
+    LLM_BACKEND,
 )
 from pipeline import index_document, get_all_documents, delete_document
 from engine import stream_chat
@@ -139,6 +140,7 @@ async def get_config():
     return ConfigResponse(
         top_k=DEFAULT_TOP_K,
         temperature=DEFAULT_TEMPERATURE,
+        llm_backend=LLM_BACKEND,
         llm_model=LLM_MODEL,
         embedding_model=EMBEDDING_MODEL,
         total_documents=len(docs),

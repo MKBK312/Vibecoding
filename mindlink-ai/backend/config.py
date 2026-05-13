@@ -12,13 +12,19 @@ CHROMA_PERSIST_DIR = os.path.join(
 CHROMA_COLLECTION_NAME = "mindlink_docs"
 
 # --- Ollama 模型 ---
-LLM_MODEL = "deepseek-r1:latest"
-EMBEDDING_MODEL = "bge-large-zh-v1.5:latest"
+LLM_MODEL = "qwen2.5:3b"
+EMBEDDING_MODEL = "modelscope.cn/Embedding-GGUF/bge-large-zh-v1.5:latest"
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
+# --- Claude API ---
+LLM_BACKEND = os.getenv("LLM_BACKEND", "claude")  # "claude" 或 "ollama"
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_AUTH_TOKEN", os.getenv("ANTHROPIC_API_KEY", ""))
+ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
 # --- 分块参数 ---
-CHUNK_SIZE = 600        # 每个 chunk 的字符数
-CHUNK_OVERLAP = 100     # chunk 之间重叠的字符数
+CHUNK_SIZE = 400        # 每个 chunk 的字符数（bge-large-zh 上下文限制 512 tokens，中文约 1 char/token，留余量）
+CHUNK_OVERLAP = 60      # chunk 之间重叠的字符数
 
 # --- 检索默认值 ---
 DEFAULT_TOP_K = 5
