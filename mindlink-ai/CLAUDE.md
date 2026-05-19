@@ -42,7 +42,6 @@ Browser file upload → FastAPI /api/upload
 ### LLM Backend
 
 - **Default (MVP)**: Ollama local `qwen2.5:3b` (1.9GB, good instruction-following)
-- **Fallback**: Ollama `deepseek-r1:1.5b` (1.1GB, verbose/thinking-tokens)
 - **Optional**: Claude-compatible API (DeepSeek) via `ANTHROPIC_BASE_URL`
 - **Switch**: Set env `LLM_BACKEND=ollama` or `LLM_BACKEND=claude`
 - Claude API requires valid `ANTHROPIC_AUTH_TOKEN` (currently needs new key)
