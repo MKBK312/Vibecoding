@@ -3,18 +3,49 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, SourceCitation } from "@/lib/types";
 
+const STORAGE_KEY = "mindlink-chat-history";
+const MAX_STORED_MESSAGES = 50;
+
 function msgId() {
   return crypto.randomUUID();
 }
 
+function loadMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.slice(-MAX_STORED_MESSAGES);
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(messages: ChatMessage[]) {
+  try {
+    const toSave = messages.slice(-MAX_STORED_MESSAGES);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+  } catch {
+    // localStorage full or unavailable, silently ignore
+  }
+}
+
 export function useChat(topK: number, temperature: number) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [openSources, setOpenSources] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null!);
   const isStreamingRef = useRef(false);
+
+  // Persist to localStorage when messages change (only after streaming done)
+  useEffect(() => {
+    if (!isStreamingRef.current && messages.length > 0) {
+      saveMessages(messages);
+    }
+  }, [messages]);
 
   // Auto-scroll
   const scrollToBottom = useCallback(() => {
@@ -30,7 +61,6 @@ export function useChat(topK: number, temperature: number) {
     async (text: string) => {
       if (isStreamingRef.current || !text.trim()) return;
 
-      // 1. Add user message
       const userMsg: ChatMessage = {
         id: msgId(),
         role: "user",
@@ -40,7 +70,6 @@ export function useChat(topK: number, temperature: number) {
       };
       setMessages((prev) => [...prev, userMsg]);
 
-      // 2. Add placeholder AI message
       const aiId = msgId();
       const aiPlaceholder: ChatMessage = {
         id: aiId,
@@ -117,11 +146,9 @@ export function useChat(topK: number, temperature: number) {
           }
         }
 
-        // Finalize: attach sources
         setMessages((prev) =>
           prev.map((m) => (m.id === aiId ? { ...m, sources } : m))
         );
-        // Auto-open sources
         setOpenSources((prev) => ({ ...prev, [aiId]: true }));
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== "AbortError") {
@@ -157,6 +184,11 @@ export function useChat(topK: number, temperature: number) {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setOpenSources({});
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
   }, []);
 
   return {

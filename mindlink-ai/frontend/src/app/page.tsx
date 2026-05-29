@@ -40,6 +40,7 @@ export default function Home() {
         onSend={chat.handleSend}
         onStop={chat.stopGeneration}
         onToggleSources={chat.toggleSources}
+        onClear={chat.clearMessages}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu } from "lucide-react";
+import { Menu, Trash2 } from "lucide-react";
 import { useConfig } from "@/hooks/useConfig";
 import type { ChatMessage, SourceCitation } from "@/lib/types";
 import { ChatMessages } from "./ChatMessages";
@@ -15,6 +15,7 @@ interface ChatHubProps {
   onSend: (text: string) => void;
   onStop: () => void;
   onToggleSources: (msgId: string) => void;
+  onClear: () => void;
   onToggleSidebar: () => void;
 }
 
@@ -27,6 +28,7 @@ export function ChatHub({
   onSend,
   onStop,
   onToggleSources,
+  onClear,
   onToggleSidebar,
 }: ChatHubProps) {
   const { data: config } = useConfig();
@@ -51,13 +53,25 @@ export function ChatHub({
             </p>
           </div>
         </div>
-        <span className="text-[11px] text-blue-500 font-medium bg-blue-50 px-2.5 py-1 rounded-md">
-          {config
-            ? config.llm_backend === "claude"
-              ? "Claude API"
-              : config.llm_model
-            : "—"}
-        </span>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              onClick={onClear}
+              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded-md hover:bg-red-50"
+              title="清空对话"
+            >
+              <Trash2 className="w-3 h-3" />
+              清空
+            </button>
+          )}
+          <span className="text-[11px] text-blue-500 font-medium bg-blue-50 px-2.5 py-1 rounded-md">
+            {config
+              ? config.llm_backend === "claude"
+                ? "Claude API"
+                : config.llm_model
+              : "—"}
+          </span>
+        </div>
       </header>
 
       {/* Messages */}
