@@ -159,6 +159,7 @@ async def stream_chat_ollama(
         base_url=OLLAMA_BASE_URL,
         temperature=temperature,
         request_timeout=120.0,
+        additional_kwargs={"options": {"num_gpu": 0}},  # 强制 CPU 模式（8GB 显存不够）
     )
 
     try:
