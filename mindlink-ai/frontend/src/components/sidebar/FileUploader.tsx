@@ -1,12 +1,26 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, FileText } from "lucide-react";
 import { useUpload } from "@/hooks/useUpload";
 
 export function FileUploader() {
   const { upload, isUploading } = useUpload();
+  const [elapsed, setElapsed] = useState(0);
+
+  // Upload timer
+  useEffect(() => {
+    if (!isUploading) {
+      setElapsed(0);
+      return;
+    }
+    const start = Date.now();
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isUploading]);
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -37,13 +51,16 @@ export function FileUploader() {
             ? "border-blue-400 bg-blue-500/5"
             : "border-slate-600 hover:border-slate-500 bg-slate-900"
         }
-        ${isUploading ? "pointer-events-none opacity-60" : ""}`}
+        ${isUploading ? "pointer-events-none opacity-60" : ""}
+        ${isUploading ? "animate-pulse" : ""}`}
     >
       <input {...getInputProps()} />
       {isUploading ? (
         <div className="flex flex-col items-center gap-2">
           <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-slate-400">正在解析...</span>
+          <span className="text-xs text-slate-400">
+            正在解析{elapsed > 0 ? `... (${elapsed}s)` : "..."}
+          </span>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2">

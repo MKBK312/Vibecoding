@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useCallback } from "react";
 import { Brain, Loader2 } from "lucide-react";
 import { marked } from "marked";
 import type { ChatMessage } from "@/lib/types";
@@ -22,10 +23,33 @@ export function ChatMessages({
   messagesEndRef,
   onToggleSources,
 }: ChatMessagesProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isScrolledToBottom = useRef(true);
+
+  // Track whether user is scrolled to bottom
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const threshold = 80;
+    isScrolledToBottom.current =
+      Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
+  }, []);
+
+  // Auto-scroll to bottom only if user hasn't scrolled up
+  useEffect(() => {
+    if (isScrolledToBottom.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, streamingContent, messagesEndRef]);
+
   const isEmpty = messages.length === 0 && !isStreaming;
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="flex-1 overflow-y-auto px-6 py-6 space-y-5"
+    >
       {isEmpty && (
         <div className="flex flex-col items-center justify-center h-full text-slate-400">
           <div className="text-4xl mb-3">
