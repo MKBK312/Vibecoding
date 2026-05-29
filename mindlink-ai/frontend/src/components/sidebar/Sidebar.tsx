@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain } from "lucide-react";
+import { Brain, X } from "lucide-react";
 import { FileUploader } from "./FileUploader";
 import { DocumentList } from "./DocumentList";
 import { ModelParams } from "./ModelParams";
@@ -10,6 +10,8 @@ interface SidebarProps {
   temperature: number;
   onTopKChange: (value: number) => void;
   onTemperatureChange: (value: number) => void;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 export function Sidebar({
@@ -17,11 +19,19 @@ export function Sidebar({
   temperature,
   onTopKChange,
   onTemperatureChange,
+  sidebarOpen,
+  onToggleSidebar,
 }: SidebarProps) {
   return (
-    <aside className="w-[360px] flex-shrink-0 bg-slate-800 flex flex-col h-full">
+    <aside
+      className={`w-[360px] flex-shrink-0 bg-slate-800 flex flex-col h-full
+        fixed inset-y-0 left-0 z-30
+        transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        lg:static lg:translate-x-0`}
+    >
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-slate-700/50">
+      <div className="px-5 py-5 border-b border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Brain className="w-6 h-6 text-blue-400" />
           <div>
@@ -33,6 +43,14 @@ export function Sidebar({
             </p>
           </div>
         </div>
+        {/* Close button (mobile/tablet only) */}
+        <button
+          onClick={onToggleSidebar}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+          aria-label="关闭侧边栏"
+        >
+          <X className="w-5 h-5" />
+        </button>
       </div>
 
       {/* File Upload */}
