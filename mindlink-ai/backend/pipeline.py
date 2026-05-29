@@ -17,11 +17,13 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 
 from config import (
     CHROMA_PERSIST_DIR,
-    CHROMA_COLLECTION_NAME,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     EMBEDDING_MODEL,
     OLLAMA_BASE_URL,
+    get_active_collection,
+    list_kb_collections,
+    add_kb_collection,
 )
 
 # ============================================================================
@@ -38,11 +40,13 @@ def get_chroma_client() -> chromadb.PersistentClient:
     )
 
 
-def get_or_create_collection():
-    """获取或创建向量集合，使用余弦距离"""
+def get_or_create_collection(name: str = None):
+    """获取或创建向量集合，使用余弦距离。默认使用当前激活的知识库。"""
+    if name is None:
+        name = get_active_collection()
     client = get_chroma_client()
     return client.get_or_create_collection(
-        name=CHROMA_COLLECTION_NAME,
+        name=name,
         metadata={"hnsw:space": "cosine"},
     )
 
@@ -51,15 +55,20 @@ def get_or_create_collection():
 # 文档元数据管理（使用 JSON 文件持久化）
 # ============================================================================
 
-_META_FILE = os.path.join(CHROMA_PERSIST_DIR, "doc_meta.json")
+def _get_meta_file(collection_name: str = None) -> str:
+    """每个知识库独立的元数据文件"""
+    if collection_name is None:
+        collection_name = get_active_collection()
+    return os.path.join(CHROMA_PERSIST_DIR, f"doc_meta_{collection_name}.json")
 
 
 def _load_meta() -> Dict[str, Dict[str, Any]]:
     """从 JSON 文件加载文档元数据"""
-    if not os.path.exists(_META_FILE):
+    meta_file = _get_meta_file()
+    if not os.path.exists(meta_file):
         return {}
     try:
-        with open(_META_FILE, "r", encoding="utf-8") as f:
+        with open(meta_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError):
         return {}
@@ -68,7 +77,7 @@ def _load_meta() -> Dict[str, Dict[str, Any]]:
 def _save_meta(meta: Dict[str, Dict[str, Any]]) -> None:
     """保存文档元数据到 JSON 文件"""
     os.makedirs(CHROMA_PERSIST_DIR, exist_ok=True)
-    with open(_META_FILE, "w", encoding="utf-8") as f:
+    with open(_get_meta_file(), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
 

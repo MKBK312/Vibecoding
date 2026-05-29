@@ -23,6 +23,8 @@ from models import (
     DeleteResponse,
     ConfigResponse,
     DocumentInfo,
+    KnowledgeBaseInfo,
+    SwitchKBRequest,
 )
 from config import (
     ALLOWED_EXTENSIONS,
@@ -31,8 +33,12 @@ from config import (
     LLM_MODEL,
     EMBEDDING_MODEL,
     LLM_BACKEND,
+    get_active_collection,
+    set_active_collection,
+    list_kb_collections,
+    add_kb_collection,
 )
-from pipeline import index_document, get_all_documents, delete_document
+from pipeline import index_document, get_all_documents, delete_document, get_or_create_collection
 from engine import stream_chat
 
 # ---------------------------------------------------------------------------
@@ -143,9 +149,59 @@ async def get_config():
         llm_backend=LLM_BACKEND,
         llm_model=LLM_MODEL,
         embedding_model=EMBEDDING_MODEL,
+        active_collection=get_active_collection(),
+        collections=list_kb_collections(),
         total_documents=len(docs),
         total_chunks=total_chunks,
     )
+
+
+@app.get("/api/knowledge-bases", response_model=list[KnowledgeBaseInfo])
+async def list_knowledge_bases():
+    """列出所有知识库及其统计"""
+    result = []
+    for name in list_kb_collections():
+        try:
+            col = get_or_create_collection(name)
+            count = col.count()
+        except Exception:
+            count = 0
+        # 统计文档数（从各自的 meta 文件中）
+        try:
+            docs = get_all_documents()
+            result.append(KnowledgeBaseInfo(
+                name=name,
+                total_documents=len(docs),
+                total_chunks=count if name == get_active_collection() else 0,
+            ))
+        except Exception:
+            result.append(KnowledgeBaseInfo(
+                name=name,
+                total_documents=0,
+                total_chunks=count,
+            ))
+    return result
+
+
+@app.post("/api/knowledge-bases", response_model=dict)
+async def create_knowledge_base(data: SwitchKBRequest):
+    """创建新知识库"""
+    name = data.collection.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="知识库名称不能为空")
+    add_kb_collection(name)
+    get_or_create_collection(name)  # 初始化 collection
+    return {"success": True, "collection": name}
+
+
+@app.post("/api/knowledge-bases/switch", response_model=dict)
+async def switch_knowledge_base(data: SwitchKBRequest):
+    """切换激活的知识库"""
+    name = data.collection.strip()
+    if name not in list_kb_collections():
+        raise HTTPException(status_code=404, detail=f"知识库 '{name}' 不存在")
+    set_active_collection(name)
+    return {"success": True, "active_collection": name}
 
 
 @app.post("/api/chat/stream")

@@ -1,4 +1,4 @@
-import type { DocumentInfo, UploadResponse, DeleteResponse, ConfigResponse } from "./types";
+import type { DocumentInfo, UploadResponse, DeleteResponse, ConfigResponse, KnowledgeBaseInfo } from "./types";
 
 export async function fetchDocuments(): Promise<DocumentInfo[]> {
   const res = await fetch("/api/documents");
@@ -30,4 +30,28 @@ export async function fetchConfig(): Promise<ConfigResponse> {
   const res = await fetch("/api/config");
   if (!res.ok) throw new Error("Failed to fetch config");
   return res.json();
+}
+
+export async function fetchKnowledgeBases(): Promise<KnowledgeBaseInfo[]> {
+  const res = await fetch("/api/knowledge-bases");
+  if (!res.ok) throw new Error("Failed to fetch knowledge bases");
+  return res.json();
+}
+
+export async function createKnowledgeBase(name: string): Promise<void> {
+  const res = await fetch("/api/knowledge-bases", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ collection: name }),
+  });
+  if (!res.ok) throw new Error("Failed to create knowledge base");
+}
+
+export async function switchKnowledgeBase(name: string): Promise<void> {
+  const res = await fetch("/api/knowledge-bases/switch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ collection: name }),
+  });
+  if (!res.ok) throw new Error("Failed to switch knowledge base");
 }

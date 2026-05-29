@@ -54,5 +54,19 @@ class ConfigResponse(BaseModel):
     llm_backend: str       # "claude" or "ollama"
     llm_model: str
     embedding_model: str
+    active_collection: str
+    collections: list
     total_documents: int
     total_chunks: int
+
+
+class KnowledgeBaseInfo(BaseModel):
+    """知识库信息"""
+    name: str
+    total_documents: int
+    total_chunks: int
+
+
+class SwitchKBRequest(BaseModel):
+    """切换知识库请求"""
+    collection: str

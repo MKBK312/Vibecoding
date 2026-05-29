@@ -48,8 +48,9 @@ export function ChatHub({
           <div>
             <h2 className="text-[15px] font-semibold text-slate-800">对话</h2>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              基于 {config?.total_documents ?? 0} 个文档 ·{" "}
-              {config?.total_chunks ?? 0} 个知识块
+              知识库 "{config?.active_collection ?? "—"}" ·{" "}
+              {config?.total_documents ?? 0} 文档 ·{" "}
+              {config?.total_chunks ?? 0} 块
             </p>
           </div>
         </div>

@@ -4,6 +4,8 @@ import { Brain, X } from "lucide-react";
 import { FileUploader } from "./FileUploader";
 import { DocumentList } from "./DocumentList";
 import { ModelParams } from "./ModelParams";
+import { KnowledgeBaseSelector } from "./KnowledgeBaseSelector";
+import { useConfig } from "@/hooks/useConfig";
 
 interface SidebarProps {
   topK: number;
@@ -22,6 +24,7 @@ export function Sidebar({
   sidebarOpen,
   onToggleSidebar,
 }: SidebarProps) {
+  const { data: config } = useConfig();
   return (
     <aside
       className={`w-[360px] flex-shrink-0 bg-slate-800 flex flex-col h-full
@@ -52,6 +55,16 @@ export function Sidebar({
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Knowledge Base Selector */}
+      {config && (
+        <div className="px-4 pt-4">
+          <KnowledgeBaseSelector
+            activeCollection={config.active_collection}
+            collections={config.collections}
+          />
+        </div>
+      )}
 
       {/* File Upload */}
       <div className="p-4">

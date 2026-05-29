@@ -42,6 +42,14 @@ export interface ConfigResponse {
   llm_backend: string;
   llm_model: string;
   embedding_model: string;
+  active_collection: string;
+  collections: string[];
+  total_documents: number;
+  total_chunks: number;
+}
+
+export interface KnowledgeBaseInfo {
+  name: string;
   total_documents: number;
   total_chunks: number;
 }
