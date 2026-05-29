@@ -13,7 +13,7 @@ export function useChat(topK: number, temperature: number) {
   const [streamingContent, setStreamingContent] = useState("");
   const [openSources, setOpenSources] = useState<Record<string, boolean>>({});
   const abortRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null!);
   const isStreamingRef = useRef(false);
 
   // Auto-scroll
