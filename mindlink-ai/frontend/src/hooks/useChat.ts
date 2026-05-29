@@ -32,7 +32,8 @@ function saveMessages(messages: ChatMessage[]) {
 }
 
 export function useChat(topK: number, temperature: number) {
-  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [openSources, setOpenSources] = useState<Record<string, boolean>>({});
@@ -40,12 +41,21 @@ export function useChat(topK: number, temperature: number) {
   const messagesEndRef = useRef<HTMLDivElement>(null!);
   const isStreamingRef = useRef(false);
 
+  // Load from localStorage on mount (client-side only, avoids hydration mismatch)
+  useEffect(() => {
+    const saved = loadMessages();
+    if (saved.length > 0) {
+      setMessages(saved);
+    }
+    setMessagesLoaded(true);
+  }, []);
+
   // Persist to localStorage when messages change (only after streaming done)
   useEffect(() => {
-    if (!isStreamingRef.current && messages.length > 0) {
+    if (messagesLoaded && !isStreamingRef.current && messages.length > 0) {
       saveMessages(messages);
     }
-  }, [messages]);
+  }, [messages, messagesLoaded]);
 
   // Auto-scroll
   const scrollToBottom = useCallback(() => {

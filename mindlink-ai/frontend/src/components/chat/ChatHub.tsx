@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Menu, Trash2 } from "lucide-react";
 import { useConfig } from "@/hooks/useConfig";
-import type { ChatMessage, SourceCitation } from "@/lib/types";
+import type { ChatMessage } from "@/lib/types";
 import { ChatMessages } from "./ChatMessages";
 import { ChatInput } from "./ChatInput";
 
@@ -32,6 +33,8 @@ export function ChatHub({
   onToggleSidebar,
 }: ChatHubProps) {
   const { data: config } = useConfig();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <main className="flex-1 flex flex-col h-full bg-white min-w-0">
@@ -55,7 +58,7 @@ export function ChatHub({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {messages.length > 0 && (
+          {mounted && messages.length > 0 && (
             <button
               onClick={onClear}
               className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded-md hover:bg-red-50"
