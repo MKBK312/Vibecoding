@@ -29,6 +29,7 @@ CHUNK_OVERLAP = 60      # chunk 之间重叠的字符数
 # --- 检索默认值 ---
 DEFAULT_TOP_K = 5
 DEFAULT_TEMPERATURE = 0.7
+MIN_SIMILARITY_SCORE = 0.40  # 所有 chunk 分数低于此值时，拒绝回答（避免 LLM 瞎编）
 
 # --- 支持的文件类型 ---
 ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt"}

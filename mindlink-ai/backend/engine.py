@@ -21,6 +21,7 @@ from config import (
     LLM_BACKEND,
     DEFAULT_TOP_K,
     DEFAULT_TEMPERATURE,
+    MIN_SIMILARITY_SCORE,
 )
 from pipeline import get_or_create_collection, get_embed_model as _get_embed_model
 from models import SourceCitation
@@ -195,6 +196,13 @@ async def stream_chat(
 
     if not sources:
         yield f"data: {json.dumps({'type': 'text', 'content': '未找到相关参考资料，请先上传文档后再提问。', 'sources': []})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
+        return
+
+    # 相似度阈值过滤：如果所有 chunk 分数都低于阈值，说明知识库无相关内容
+    max_score = max(s.score for s in sources)
+    if max_score < MIN_SIMILARITY_SCORE:
+        yield f"data: {json.dumps({'type': 'text', 'content': f'知识库中暂无与问题相关的内容（最高相关度 {max_score:.2f} < 阈值 {MIN_SIMILARITY_SCORE}），建议上传相关文档后再提问。', 'sources': []})}\n\n"
         yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
         return
 
