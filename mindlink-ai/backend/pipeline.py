@@ -201,6 +201,26 @@ def parse_txt(file_path: str) -> Tuple[List[Dict[str, Any]], int]:
     return chunk_metas, 0
 
 
+def parse_docx(file_path: str) -> Tuple[List[Dict[str, Any]], int]:
+    """解析 Word (.docx) 文件，提取段落文本"""
+    from docx import Document
+
+    doc = Document(file_path)
+    paragraphs = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            paragraphs.append(text)
+
+    full_text = "\n".join(paragraphs)
+    chunks = _split_text(full_text)
+    chunk_metas = [
+        {"text": c, "page_number": None, "chunk_index": i}
+        for i, c in enumerate(chunks)
+    ]
+    return chunk_metas, 0
+
+
 def _split_text(text: str) -> List[str]:
     """简单滑动窗口分块，中文友好"""
     chunks = []
@@ -224,6 +244,7 @@ def parse_document(file_path: str, source_type: str) -> Tuple[List[Dict[str, Any
         "pdf": parse_pdf,
         "markdown": parse_markdown,
         "txt": parse_txt,
+        "docx": parse_docx,
     }
     parser = parsers.get(source_type)
     if not parser:

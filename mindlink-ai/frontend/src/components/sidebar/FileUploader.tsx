@@ -37,6 +37,7 @@ export function FileUploader() {
       "application/pdf": [".pdf"],
       "text/markdown": [".md"],
       "text/plain": [".txt"],
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
     maxSize: 50 * 1024 * 1024,
     disabled: isUploading,
@@ -73,7 +74,7 @@ export function FileUploader() {
             {isDragActive ? "释放以上传文件" : "拖拽文件到此处上传"}
           </p>
           <p className="text-[11px] text-slate-600">
-            PDF · Markdown · TXT（最大 50MB）
+            PDF · DOCX · Markdown · TXT（最大 50MB）
           </p>
         </div>
       )}

@@ -78,6 +78,7 @@ def _get_source_type(filename: str) -> str:
         ".pdf": "pdf",
         ".md": "markdown",
         ".txt": "txt",
+        ".docx": "docx",
     }
     return type_map[ext]
 

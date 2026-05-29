@@ -1,7 +1,7 @@
 export interface DocumentInfo {
   id: string;
   filename: string;
-  source_type: "pdf" | "markdown" | "txt";
+  source_type: "pdf" | "markdown" | "txt" | "docx";
   page_count: number | null;
   chunk_count: number;
   created_at: string;
