@@ -295,7 +295,6 @@ def get_embed_model() -> OllamaEmbedding:
         _embed_model = OllamaEmbedding(
             model_name=EMBEDDING_MODEL,
             base_url=OLLAMA_BASE_URL,
-            ollama_additional_kwargs={"num_gpu": 0},  # Embedding走CPU，释放GPU给LLM
         )
     return _embed_model
 
