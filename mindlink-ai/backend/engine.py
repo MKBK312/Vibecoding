@@ -159,7 +159,8 @@ async def stream_chat_ollama(
         base_url=OLLAMA_BASE_URL,
         temperature=temperature,
         request_timeout=120.0,
-        additional_kwargs={"options": {"num_gpu": 1, "num_ctx": 2048}},  # GPU + 限制上下文解决8GB显存
+        context_window=2048,                     # 限制上下文窗口减小KV缓存
+        additional_kwargs={"num_gpu": 1},        # 所有层加载到GPU
     )
 
     try:
