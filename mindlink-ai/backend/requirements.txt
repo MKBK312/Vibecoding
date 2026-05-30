@@ -9,3 +9,6 @@ pymupdf>=1.23
 python-multipart>=0.0.9
 pydantic>=2.5
 httpx>=0.28
+paddlepaddle>=3
+paddleocr>=3
+python-docx>=1

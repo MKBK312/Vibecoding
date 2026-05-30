@@ -147,10 +147,22 @@ def delete_document(doc_id: str) -> int:
 # 文档解析
 # ============================================================================
 
+# PaddleOCR 全局单例（延迟加载，避免每次解析 PDF 都初始化）
+_ocr_model = None
+
+
+def _get_ocr():
+    """获取 PaddleOCR 实例（CPU 模式，避免和 LLM 抢 GPU 内存）"""
+    global _ocr_model
+    if _ocr_model is None:
+        from paddleocr import PaddleOCR
+        _ocr_model = PaddleOCR(lang="ch", use_gpu=False)
+    return _ocr_model
+
 
 def parse_pdf(file_path: str) -> Tuple[List[Dict[str, Any]], int]:
     """
-    使用 PyMuPDF 逐页解析 PDF。
+    使用 PyMuPDF 逐页解析 PDF。扫描版页面自动回退到 PaddleOCR。
     返回: (chunks_meta_list, page_count)
       每个 chunk: {text, page_number, chunk_index}
     """
@@ -161,8 +173,24 @@ def parse_pdf(file_path: str) -> Tuple[List[Dict[str, Any]], int]:
 
     for page_num in range(len(doc)):
         text = doc[page_num].get_text()
+
+        # 扫描版 PDF 检测：文本层为空或极少字符 → OCR 回退
+        if len(text.strip()) < 20:
+            try:
+                pix = doc[page_num].get_pixmap(dpi=200)
+                img_bytes = pix.tobytes("png")
+                ocr = _get_ocr()
+                result = ocr.ocr(img_bytes, cls=True)
+                if result and result[0]:
+                    text = "\n".join(
+                        [line[1][0] for line in result[0]]
+                    )
+            except Exception:
+                pass  # OCR 失败则跳过该页
+
         if not text.strip():
             continue
+
         chunks = _split_text(text)
         for ci, chunk in enumerate(chunks):
             all_chunks.append({
