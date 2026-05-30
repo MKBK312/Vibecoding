@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.core.node_parser import SentenceSplitter
 
 from config import (
     CHROMA_PERSIST_DIR,
@@ -221,18 +222,17 @@ def parse_docx(file_path: str) -> Tuple[List[Dict[str, Any]], int]:
     return chunk_metas, 0
 
 
+_splitter = SentenceSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    paragraph_separator="\n\n",
+    secondary_chunking_regex="[^,.;。？！]+[,.;。？！]?|[,.;。？！]",
+)
+
+
 def _split_text(text: str) -> List[str]:
-    """简单滑动窗口分块，中文友好"""
-    chunks = []
-    start = 0
-    text_len = len(text)
-    while start < text_len:
-        end = start + CHUNK_SIZE
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start += CHUNK_SIZE - CHUNK_OVERLAP
-    return chunks
+    """语义分块：优先段落边界 → 句子标点 → token 数控制"""
+    return _splitter.split_text(text)
 
 
 def parse_document(file_path: str, source_type: str) -> Tuple[List[Dict[str, Any]], int]:

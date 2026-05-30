@@ -72,8 +72,9 @@ ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com"
 CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
 # --- 分块参数 ---
-CHUNK_SIZE = 400        # 每个 chunk 的字符数（bge-large-zh 上下文限制 512 tokens，中文约 1 char/token，留余量）
-CHUNK_OVERLAP = 60      # chunk 之间重叠的字符数
+# SentenceSplitter 语义分块：优先在段落/句子边界切分，再按 token 数控制块大小
+CHUNK_SIZE = 384         # tokens（bge-large-zh 上下文 512 tokens，留余量给 metadata）
+CHUNK_OVERLAP = 50       # tokens
 
 # --- 检索默认值 ---
 DEFAULT_TOP_K = 5
