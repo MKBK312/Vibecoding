@@ -7,6 +7,9 @@ Ollama/
 # Superpowers skills
 superpowers/
 
+# 环境变量文件（含密码/密钥）
+.env
+
 # OS files
 .DS_Store
 Thumbs.db

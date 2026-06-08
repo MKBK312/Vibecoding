@@ -94,3 +94,54 @@ Next.js `rewrites()` in `next.config.js` proxies all `/api/*` requests to `http:
 ## Design documents
 
 The full system design doc (in Chinese) is at `E:\COLIN\vibecoding\开发文档\个人话知识系统设计文档.md`.
+
+## Docker Compose 部署（局域网多用户）
+
+### 前置条件
+- 安装 Docker Desktop
+- Ollama 已在宿主机运行（`http://localhost:11434`）
+
+### 快速启动
+
+```bash
+# 1. 配置环境变量
+cd mindlink-ai
+cp .env.example .env
+# 编辑 .env，将 LAN_IP 改为宿主机局域网 IP
+# Windows: ipconfig | findstr "IPv4"
+# macOS/Linux: ip addr | grep "inet "
+
+# 2. 一键启动
+docker compose up -d
+
+# 3. 查看日志
+docker compose logs -f
+
+# 4. 浏览器访问
+# http://<LAN_IP>:3000
+```
+
+### 首次使用
+- MySQL 初始化需要约 30 秒，后端会等待 MySQL 健康检查通过
+- 在 `http://<IP>:3000/register` 注册账号后使用
+- 更换网络/WiFi 导致 IP 变化时，修改 `.env` 中 `LAN_IP` 后 `docker compose down && docker compose up -d`
+
+### 停止服务
+```bash
+# 保留数据
+docker compose down
+
+# 完全清理（删除所有数据）
+docker compose down -v
+```
+
+### 本地开发（非 Docker）
+```bash
+# 后端 (port 8000)
+cd backend
+OLLAMA_BASE_URL=http://localhost:11434 LLM_BACKEND=ollama venv/Scripts/python -m uvicorn main:app --reload --port 8000
+
+# 前端 (port 3000)
+cd frontend && npm run dev
+# .env.local 中的 NEXT_PUBLIC_API_URL=http://localhost:8000 用于本地开发
+```
