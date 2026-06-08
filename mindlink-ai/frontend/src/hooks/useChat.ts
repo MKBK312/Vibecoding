@@ -2,9 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { ChatMessage, SourceCitation } from "@/lib/types";
-import { fetchChatHistory, clearChatHistory } from "@/lib/api";
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+import { fetchChatHistory, clearChatHistory, BASE_URL } from "@/lib/api";
 
 function msgId() {
   return crypto.randomUUID();

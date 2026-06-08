@@ -10,7 +10,7 @@ import type {
   ChatMessageResponse,
 } from "./types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+export const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 // --- 认证辅助 ---
 
