@@ -27,7 +27,7 @@ from config import (
 from pipeline import get_or_create_collection, get_embed_model as _get_embed_model
 from models import SourceCitation
 
-# Reranker 单例延迟加载（首次下载 ~1.1GB 模型，之后常驻内存）
+# Reranker 单例延迟加载（首次下载 ~2.2GB 模型，之后常驻内存）
 _reranker = None
 
 
@@ -35,14 +35,14 @@ def _get_reranker():
     global _reranker
     if _reranker is None:
         from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3")
+        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cpu")
     return _reranker
 
 
 def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation]:
     """
     两阶段检索：
-    1. ChromaDB 余弦粗召回 Top-K * 4 个候选
+    1. ChromaDB 余弦粗召回 RERANK_CANDIDATE_K 个候选
     2. CrossEncoder Reranker 精排，取 Top-K 个送入 LLM
     """
     embed_model = _get_embed_model()
@@ -228,12 +228,8 @@ async def stream_chat(
         yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
         return
 
-    # 相似度阈值过滤：如果所有 chunk 分数都低于阈值，说明知识库无相关内容
-    max_score = max(s.score for s in sources)
-    if max_score < MIN_SIMILARITY_SCORE:
-        yield f"data: {json.dumps({'type': 'text', 'content': f'知识库中暂无与问题相关的内容（最高相关度 {max_score:.2f} < 阈值 {MIN_SIMILARITY_SCORE}），建议上传相关文档后再提问。', 'sources': []})}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
-        return
+    # 注：此处不额外做阈值过滤 —— search_chunks() 已在粗召回阶段用余弦相似度做了一次
+    # MIN_SIMILARITY_SCORE 过滤，且 Reranker 分数为 CrossEncoder logits，与余弦相似度无量纲可比性。
 
     # Step 2: 构造 Prompt
     system_prompt = _build_system_prompt(sources)
