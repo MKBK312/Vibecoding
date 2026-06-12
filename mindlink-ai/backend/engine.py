@@ -22,46 +22,74 @@ from config import (
     DEFAULT_TOP_K,
     DEFAULT_TEMPERATURE,
     MIN_SIMILARITY_SCORE,
+    RERANK_CANDIDATE_K,
 )
 from pipeline import get_or_create_collection, get_embed_model as _get_embed_model
 from models import SourceCitation
 
+# Reranker 单例延迟加载（首次下载 ~1.1GB 模型，之后常驻内存）
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from sentence_transformers import CrossEncoder
+        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3")
+    return _reranker
+
 
 def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation]:
     """
-    向量化用户问题，从 ChromaDB 检索 Top-K 相似文本块。
-    将余弦距离转换为相似度评分：score = 1.0 - distance
+    两阶段检索：
+    1. ChromaDB 余弦粗召回 Top-K * 4 个候选
+    2. CrossEncoder Reranker 精排，取 Top-K 个送入 LLM
     """
     embed_model = _get_embed_model()
     query_embedding = embed_model.get_text_embedding(query)
 
     collection = get_or_create_collection()
+    candidate_k = max(top_k, RERANK_CANDIDATE_K)
     results = collection.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
+        n_results=candidate_k,
     )
 
-    sources: List[SourceCitation] = []
-    # ChromaDB 返回格式: {"ids": [[id1, id2, ...]], "documents": [[doc1, doc2, ...]], ...}
+    # 构建候选列表
+    candidates: List[SourceCitation] = []
     if results.get("ids") and results["ids"][0]:
         for i, chunk_id in enumerate(results["ids"][0]):
             meta = results["metadatas"][0][i]
-            # 余弦距离转相似度：距离范围 [0, 2]，截断到 [0, 1] 后取反
             raw_distance = results["distances"][0][i] if results.get("distances") else 0.0
             score = 1.0 - min(raw_distance, 1.0)
-
             page_num = meta.get("page_number", -1)
-            sources.append(SourceCitation(
+            candidates.append(SourceCitation(
                 document_id=meta.get("document_id", ""),
                 document_title=meta.get("filename", "未知文件"),
                 page_number=page_num if page_num >= 0 else None,
-                content=results["documents"][0][i][:300],  # 截取前 300 字符展示
+                content=results["documents"][0][i],
                 score=round(score, 4),
             ))
 
-    # 按相似度降序排列
-    sources.sort(key=lambda s: s.score, reverse=True)
-    return sources
+    # 相似度阈值过滤（在粗召回后执行）
+    if candidates:
+        max_vec_score = max(c.score for c in candidates)
+        if max_vec_score < MIN_SIMILARITY_SCORE:
+            return []
+
+    # Reranker 精排：对 (query, chunk) 逐对打分
+    if len(candidates) > top_k:
+        reranker = _get_reranker()
+        pairs = [(query, c.content) for c in candidates]
+        rerank_scores = reranker.predict(pairs, show_progress_bar=False)
+
+        for c, rs in zip(candidates, rerank_scores):
+            c.score = round(float(rs), 4)
+
+        # 按 Rerank 分数降序排列，取 Top-K
+        candidates.sort(key=lambda s: s.score, reverse=True)
+
+    return candidates[:top_k]
 
 
 def _build_system_prompt(sources: List[SourceCitation]) -> str:
