@@ -69,10 +69,10 @@ def add_kb_collection(name: str, user_id: str | None = None) -> None:
 # --- Ollama 模型 ---
 LLM_MODEL = "qwen2.5:3b"
 EMBEDDING_MODEL = "modelscope.cn/Embedding-GGUF/bge-large-zh-v1.5:latest"
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 # --- Claude API ---
-LLM_BACKEND = os.getenv("LLM_BACKEND", "claude")
+LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_AUTH_TOKEN", os.getenv("ANTHROPIC_API_KEY", ""))
 ANTHROPIC_BASE_URL = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 CLAUDE_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -85,6 +85,9 @@ CHUNK_OVERLAP = 50
 DEFAULT_TOP_K = 5
 DEFAULT_TEMPERATURE = 0.7
 MIN_SIMILARITY_SCORE = 0.40
+
+# --- Reranker 精排 ---
+RERANK_CANDIDATE_K = 20  # 粗召回候选数，重排后取 top_k 个
 
 # --- 支持的文件类型 ---
 ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt", ".docx"}

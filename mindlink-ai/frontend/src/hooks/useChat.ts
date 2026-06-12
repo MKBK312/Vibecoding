@@ -1,15 +1,72 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { openDB, type IDBPDatabase } from "idb";
 import type { ChatMessage, SourceCitation } from "@/lib/types";
-import { fetchChatHistory, clearChatHistory, BASE_URL } from "@/lib/api";
+
+const DB_NAME = "mindlink";
+const DB_VERSION = 1;
+const STORE_NAME = "chat_history";
+const MAX_STORED_MESSAGES = 50;
 
 function msgId() {
   return crypto.randomUUID();
 }
 
+let _dbPromise: Promise<IDBPDatabase> | null = null;
+
+function getDB(): Promise<IDBPDatabase> {
+  if (!_dbPromise) {
+    _dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        }
+      },
+    });
+  }
+  return _dbPromise;
+}
+
+async function loadMessages(): Promise<ChatMessage[]> {
+  try {
+    const db = await getDB();
+    const all = await db.getAll(STORE_NAME);
+    all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return all.slice(-MAX_STORED_MESSAGES);
+  } catch {
+    return [];
+  }
+}
+
+async function saveMessages(messages: ChatMessage[]): Promise<void> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    // Write last N messages
+    const toSave = messages.slice(-MAX_STORED_MESSAGES);
+    for (const msg of toSave) {
+      await store.put(msg);
+    }
+    // Prune old messages beyond the cap
+    const all = await store.getAll();
+    if (all.length > MAX_STORED_MESSAGES) {
+      all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const toDelete = all.slice(0, all.length - MAX_STORED_MESSAGES);
+      for (const msg of toDelete) {
+        await store.delete(msg.id);
+      }
+    }
+    await tx.done;
+  } catch {
+    // IndexedDB full or unavailable, silently ignore
+  }
+}
+
 export function useChat(topK: number, temperature: number) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [openSources, setOpenSources] = useState<Record<string, boolean>>({});
@@ -17,25 +74,24 @@ export function useChat(topK: number, temperature: number) {
   const messagesEndRef = useRef<HTMLDivElement>(null!);
   const isStreamingRef = useRef(false);
 
-  // 从服务端加载对话历史
+  // Load from IndexedDB on mount (client-side only, avoids hydration mismatch)
   useEffect(() => {
-    fetchChatHistory()
-      .then((history) => {
-        const mapped: ChatMessage[] = history.map((msg) => ({
-          id: msg.id,
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-          sources: (msg.sources || []) as SourceCitation[],
-          createdAt: msg.created_at,
-        }));
-        setMessages(mapped);
-      })
-      .catch(() => {
-        // 未认证或网络错误，静默忽略
-      });
+    loadMessages().then((saved) => {
+      if (saved.length > 0) {
+        setMessages(saved);
+      }
+      setMessagesLoaded(true);
+    });
   }, []);
 
-  // 自动滚动到底部
+  // Persist to IndexedDB when messages change (only after streaming done)
+  useEffect(() => {
+    if (messagesLoaded && !isStreamingRef.current && messages.length > 0) {
+      saveMessages(messages);
+    }
+  }, [messages, messagesLoaded]);
+
+  // Auto-scroll
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -44,6 +100,7 @@ export function useChat(topK: number, temperature: number) {
     scrollToBottom();
   }, [messages, streamingContent, scrollToBottom]);
 
+  // SSE streaming chat
   const handleSend = useCallback(
     async (text: string) => {
       if (isStreamingRef.current || !text.trim()) return;
@@ -75,14 +132,14 @@ export function useChat(topK: number, temperature: number) {
       abortRef.current = controller;
 
       try {
-        const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-
-        const response = await fetch(`${BASE_URL}/api/chat/stream`, {
+        const response = await fetch("/api/chat/stream", {
           method: "POST",
-          headers,
-          body: JSON.stringify({ question: text, top_k: topK, temperature }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: text,
+            top_k: topK,
+            temperature,
+          }),
           signal: controller.signal,
         });
 
@@ -171,7 +228,7 @@ export function useChat(topK: number, temperature: number) {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setOpenSources({});
-    clearChatHistory().catch(() => {});
+    getDB().then((db) => db.clear(STORE_NAME)).catch(() => {});
   }, []);
 
   return {
