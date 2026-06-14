@@ -56,6 +56,10 @@ def _get_reranker():
     return _reranker
 
 
+# 中文停用词（虚词/常见单字，过滤掉防止 BM25 噪声污染）
+_STOP_CHARS = set("的了是在和与不也就都要会能这那有人大中上下个从为以到而且或被把让但由于之所可它们每什么")
+
+
 def _tokenize(text: str) -> List[str]:
     """中英混合分词：CJK 字符按单字 + bigram 切分，英文按空格切词后追加相邻 bigram"""
     tokens: List[str] = []
@@ -72,7 +76,19 @@ def _tokenize(text: str) -> List[str]:
                     tokens.append(word)
     # 追加 bigram
     bigrams = [tokens[i] + tokens[i + 1] for i in range(len(tokens) - 1)]
-    return tokens + bigrams
+    all_tokens = tokens + bigrams
+
+    # 停用词过滤：去除中文虚词单字及其衍生的 bigram
+    filtered: List[str] = []
+    for tok in all_tokens:
+        # ASCII/英文词不过滤，直接保留
+        if all(c < '\u4e00' for c in tok):
+            filtered.append(tok)
+        elif any(c in _STOP_CHARS for c in tok):
+            continue
+        else:
+            filtered.append(tok)
+    return filtered
 
 
 def _get_bm25_index(collection):
@@ -148,27 +164,45 @@ def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation
             range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
         )[:BM25_CANDIDATE_K]
 
-        # 按 content 去重合并
-        seen_content = {c.content for c in candidates}
-        for idx in bm25_top_indices:
-            content = corpus[idx]
-            if content in seen_content:
-                continue
-            seen_content.add(content)
-            meta = metas[idx] if idx < len(metas) else {}
-            page_num = meta.get("page_number", -1)
-            bm25_candidates.append(SourceCitation(
-                document_id=meta.get("document_id", ""),
-                document_title=meta.get("filename", "未知文件"),
-                page_number=page_num if page_num >= 0 else None,
-                content=content,
-                score=round(float(bm25_scores[idx]), 4),
-            ))
-            _ci.append(meta.get("chunk_index", 0))
-        candidates.extend(bm25_candidates)
-        _last_retrieval_stats["vec"] = len(candidates) - len(bm25_candidates)
-        _last_retrieval_stats["bm25"] = len(bm25_candidates)
-        _last_retrieval_stats["merged"] = len(candidates)
+        # === BM25 质量门：检测结果是否包含有效信号 ===
+        bm25_passed = False
+        if bm25_top_indices:
+            all_scores = [bm25_scores[i] for i in range(len(bm25_scores))]
+            median = sorted(all_scores)[len(all_scores) // 2]
+            # 条件 A：信号突出（top-1 远超中位数，说明有关键词命中）
+            signal_strong = bm25_scores[bm25_top_indices[0]] >= median * 1.5
+            # 条件 B：双路验证（与向量 top-5 有内容重叠）
+            bm25_contents = {corpus[i] for i in bm25_top_indices[:5]}
+            vec_contents = {c.content for c in candidates[:5]}
+            overlap = len(bm25_contents & vec_contents) > 0
+            bm25_passed = signal_strong or overlap
+
+        # 按 content 去重合并（仅质量门通过时）
+        if bm25_passed:
+            seen_content = {c.content for c in candidates}
+            for idx in bm25_top_indices:
+                content = corpus[idx]
+                if content in seen_content:
+                    continue
+                seen_content.add(content)
+                meta = metas[idx] if idx < len(metas) else {}
+                page_num = meta.get("page_number", -1)
+                bm25_candidates.append(SourceCitation(
+                    document_id=meta.get("document_id", ""),
+                    document_title=meta.get("filename", "未知文件"),
+                    page_number=page_num if page_num >= 0 else None,
+                    content=content,
+                    score=round(float(bm25_scores[idx]), 4),
+                ))
+                _ci.append(meta.get("chunk_index", 0))
+            candidates.extend(bm25_candidates)
+            _last_retrieval_stats["vec"] = len(candidates) - len(bm25_candidates)
+            _last_retrieval_stats["bm25"] = len(bm25_candidates)
+            _last_retrieval_stats["merged"] = len(candidates)
+        else:
+            _last_retrieval_stats["vec"] = len(candidates)
+            _last_retrieval_stats["bm25"] = 0
+            _last_retrieval_stats["merged"] = len(candidates)
 
     # 相似度阈值过滤：仅检查向量检索的最高分
     # BM25 候选项已命中关键词，不经过余弦阈值筛选
