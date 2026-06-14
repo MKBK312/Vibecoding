@@ -49,10 +49,8 @@ def init_reranker():
 def _get_reranker():
     global _reranker
     if _reranker is None:
-        import torch
-        torch.set_num_threads(8)
         from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cpu")
+        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cuda")
     return _reranker
 
 

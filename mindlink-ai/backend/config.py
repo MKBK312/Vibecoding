@@ -89,7 +89,7 @@ MIN_SIMILARITY_SCORE = 0.40
 # --- Reranker 精排 ---
 RERANK_CANDIDATE_K = 20  # 粗召回候选数，重排后取 top_k 个
 BM25_CANDIDATE_K = 20    # BM25 关键词检索候选数
-RERANK_MAX_PAIRS = 8     # Reranker 最大候选对数（CPU 模式下限制耗时，~5s）
+RERANK_MAX_PAIRS = 15    # Reranker 最大候选对数（GPU 模式下 ~50ms）
 
 # --- 支持的文件类型 ---
 ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt", ".docx"}
