@@ -49,8 +49,11 @@ def init_reranker():
 def _get_reranker():
     global _reranker
     if _reranker is None:
+        import os
+        os.environ.setdefault("PYTHONUTF8", "1")
+        os.environ.setdefault("PYTHONIOENCODING", "utf-8")
         from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cuda")
+        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cpu")
     return _reranker
 
 
