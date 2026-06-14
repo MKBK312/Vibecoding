@@ -48,6 +48,16 @@ export interface ConfigResponse {
   total_chunks: number;
 }
 
+export interface User {
+  id: string;
+  username: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  user: User;
+}
+
 export interface KnowledgeBaseInfo {
   name: string;
   total_documents: number;

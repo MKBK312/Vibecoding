@@ -1,4 +1,4 @@
-import type { DocumentInfo, UploadResponse, DeleteResponse, ConfigResponse, KnowledgeBaseInfo } from "./types";
+import type { DocumentInfo, UploadResponse, DeleteResponse, ConfigResponse, KnowledgeBaseInfo, LoginResponse, User } from "./types";
 
 export async function fetchDocuments(): Promise<DocumentInfo[]> {
   const res = await fetch("/api/documents");
@@ -45,6 +45,26 @@ export async function createKnowledgeBase(name: string): Promise<void> {
     body: JSON.stringify({ collection: name }),
   });
   if (!res.ok) throw new Error("Failed to create knowledge base");
+}
+
+export async function login(credentials: { username: string; password: string }): Promise<LoginResponse> {
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ detail: "Login failed" }))).detail || "Login failed");
+  return res.json();
+}
+
+export async function register(credentials: { username: string; password: string }): Promise<LoginResponse> {
+  const res = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({ detail: "Register failed" }))).detail || "Register failed");
+  return res.json();
 }
 
 export async function switchKnowledgeBase(name: string): Promise<void> {
