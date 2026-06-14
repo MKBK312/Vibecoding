@@ -8,9 +8,17 @@ const DB_NAME = "mindlink";
 const DB_VERSION = 1;
 const STORE_NAME = "chat_history";
 const MAX_STORED_MESSAGES = 50;
+const HISTORY_LIMIT = 20;
 
 function msgId() {
-  return crypto.randomUUID();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for non-secure contexts (e.g., LAN HTTP)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
 }
 
 let _dbPromise: Promise<IDBPDatabase> | null = null;
@@ -131,6 +139,11 @@ export function useChat(topK: number, temperature: number) {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // 从当前消息列表构建历史上下文
+      const history = messages
+        .slice(-HISTORY_LIMIT)
+        .map((m) => ({ role: m.role, content: m.content }));
+
       try {
         const response = await fetch("/api/chat/stream", {
           method: "POST",
@@ -139,6 +152,7 @@ export function useChat(topK: number, temperature: number) {
             question: text,
             top_k: topK,
             temperature,
+            history,
           }),
           signal: controller.signal,
         });
@@ -211,7 +225,7 @@ export function useChat(topK: number, temperature: number) {
         abortRef.current = null;
       }
     },
-    [topK, temperature]
+    [topK, temperature, messages]
   );
 
   const stopGeneration = useCallback(() => {
