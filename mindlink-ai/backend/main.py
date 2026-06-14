@@ -31,6 +31,7 @@ from config import (
     DEFAULT_TOP_K,
     DEFAULT_TEMPERATURE,
     LLM_MODEL,
+    CLAUDE_MODEL,
     EMBEDDING_MODEL,
     LLM_BACKEND,
     get_active_collection,
@@ -39,13 +40,27 @@ from config import (
     add_kb_collection,
 )
 from pipeline import index_document, get_all_documents, delete_document, get_or_create_collection
-from engine import stream_chat
+from engine import stream_chat, init_reranker
 
 # ---------------------------------------------------------------------------
 # FastAPI 应用初始化
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="MindLink AI", version="2.0.0")
+
+
+@app.on_event("startup")
+async def startup():
+    """后端启动时预加载 Reranker + 预热推理，避免首次请求阻塞"""
+    try:
+        init_reranker()
+        # 预热：跑一次样例推理，消除首次调用冷启动
+        from engine import _get_reranker
+        reranker = _get_reranker()
+        reranker.predict([("预热", "warmup")], show_progress_bar=False)
+        print("[startup] Reranker 预热完成", flush=True)
+    except Exception as e:
+        print(f"[startup] Reranker 加载失败（HF 不可达？），将回退到纯向量检索: {e}", flush=True)
 
 # CORS：允许 Next.js 前端跨域访问
 app.add_middleware(
@@ -148,7 +163,7 @@ async def get_config():
         top_k=DEFAULT_TOP_K,
         temperature=DEFAULT_TEMPERATURE,
         llm_backend=LLM_BACKEND,
-        llm_model=LLM_MODEL,
+        llm_model=CLAUDE_MODEL if LLM_BACKEND == "claude" else LLM_MODEL,
         embedding_model=EMBEDDING_MODEL,
         active_collection=get_active_collection(),
         collections=list_kb_collections(),
@@ -214,6 +229,7 @@ async def chat_stream(request: ChatRequest):
             question=request.question,
             top_k=request.top_k,
             temperature=request.temperature,
+            history=request.history,
         ):
             yield sse_event
 

@@ -8,9 +8,11 @@
 """
 
 import json
-from typing import AsyncGenerator, List
+import re
+from typing import AsyncGenerator, List, Dict, Any, Optional
 
 import httpx
+from rank_bm25 import BM25Okapi
 
 from config import (
     LLM_MODEL,
@@ -23,6 +25,8 @@ from config import (
     DEFAULT_TEMPERATURE,
     MIN_SIMILARITY_SCORE,
     RERANK_CANDIDATE_K,
+    RERANK_MAX_PAIRS,
+    BM25_CANDIDATE_K,
 )
 from pipeline import get_or_create_collection, get_embed_model as _get_embed_model
 from models import SourceCitation
@@ -30,20 +34,80 @@ from models import SourceCitation
 # Reranker 单例延迟加载（首次下载 ~2.2GB 模型，之后常驻内存）
 _reranker = None
 
+# 最近一次检索统计（用于调试/验证）
+_last_retrieval_stats: Dict[str, int] = {}
+
+# BM25 索引缓存（文档不变时复用，避免每次请求重建）
+_bm25_cache: Dict[str, Any] = {}
+
+
+def init_reranker():
+    """后端启动时预加载 Reranker 模型，避免首次请求时阻塞"""
+    _get_reranker()
+
 
 def _get_reranker():
     global _reranker
     if _reranker is None:
+        import torch
+        torch.set_num_threads(8)
         from sentence_transformers import CrossEncoder
         _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device="cpu")
     return _reranker
 
 
+def _tokenize(text: str) -> List[str]:
+    """中英混合分词：CJK 字符按单字 + bigram 切分，英文按空格切词后追加相邻 bigram"""
+    tokens: List[str] = []
+    # 用正则分离 CJK 单字和非 CJK 连续段
+    for chunk in re.split(r"([\u4e00-\u9fff\u3400-\u4dbf])", text):
+        if not chunk:
+            continue
+        if re.match(r"[\u4e00-\u9fff\u3400-\u4dbf]", chunk):
+            tokens.append(chunk)
+        else:
+            for word in chunk.lower().split():
+                word = word.strip(".,;:!?\"'()[]{}，。；：！？""'（）【】")
+                if word:
+                    tokens.append(word)
+    # 追加 bigram
+    bigrams = [tokens[i] + tokens[i + 1] for i in range(len(tokens) - 1)]
+    return tokens + bigrams
+
+
+def _get_bm25_index(collection):
+    """获取或构建 BM25 索引（缓存复用，仅在文档数变化时重建）"""
+    global _bm25_cache
+    coll_name = collection.name
+    chunk_count = collection.count()
+
+    cache = _bm25_cache.get(coll_name)
+    if cache and cache.get("chunk_count") == chunk_count:
+        return cache["corpus"], cache["metas"], cache["index"]
+
+    # 缓存未命中：拉全量数据建索引
+    all_chunks = collection.get(include=["documents", "metadatas"])
+    corpus = list(all_chunks.get("documents") or [])
+    metas = all_chunks.get("metadatas") or []
+    tokenized_corpus = [_tokenize(doc) for doc in corpus]
+    bm25_index = BM25Okapi(tokenized_corpus)
+
+    _bm25_cache[coll_name] = {
+        "corpus": corpus,
+        "metas": metas,
+        "index": bm25_index,
+        "chunk_count": chunk_count,
+    }
+    return corpus, metas, bm25_index
+
+
 def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation]:
     """
-    两阶段检索：
+    混合检索（BM25 + 向量）：
     1. ChromaDB 余弦粗召回 RERANK_CANDIDATE_K 个候选
-    2. CrossEncoder Reranker 精排，取 Top-K 个送入 LLM
+    2. BM25 关键词并行检索 BM25_CANDIDATE_K 个候选，合并去重
+    3. CrossEncoder Reranker 精排，取 Top-K 个
+    4. 相邻块扩展：对每个选中块，补上同文档的前后块，避免跨块内容截断
     """
     embed_model = _get_embed_model()
     query_embedding = embed_model.get_text_embedding(query)
@@ -57,6 +121,8 @@ def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation
 
     # 构建候选列表
     candidates: List[SourceCitation] = []
+    # 额外记录每个候选在原始文档中的 chunk_index，用于相邻块扩展
+    _ci: List[int] = []
     if results.get("ids") and results["ids"][0]:
         for i, chunk_id in enumerate(results["ids"][0]):
             meta = results["metadatas"][0][i]
@@ -70,26 +136,118 @@ def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation
                 content=results["documents"][0][i],
                 score=round(score, 4),
             ))
+            _ci.append(meta.get("chunk_index", 0))
 
-    # 相似度阈值过滤（在粗召回后执行）
-    if candidates:
-        max_vec_score = max(c.score for c in candidates)
-        if max_vec_score < MIN_SIMILARITY_SCORE:
-            return []
+    # === BM25 关键词并行检索（索引缓存，文档不变时不重建） ===
+    corpus, metas, bm25_index = _get_bm25_index(collection)
+    bm25_candidates: List[SourceCitation] = []
+    if corpus:
+        tokenized_query = _tokenize(query)
+        bm25_scores = bm25_index.get_scores(tokenized_query)
+        bm25_top_indices = sorted(
+            range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True
+        )[:BM25_CANDIDATE_K]
+
+        # 按 content 去重合并
+        seen_content = {c.content for c in candidates}
+        for idx in bm25_top_indices:
+            content = corpus[idx]
+            if content in seen_content:
+                continue
+            seen_content.add(content)
+            meta = metas[idx] if idx < len(metas) else {}
+            page_num = meta.get("page_number", -1)
+            bm25_candidates.append(SourceCitation(
+                document_id=meta.get("document_id", ""),
+                document_title=meta.get("filename", "未知文件"),
+                page_number=page_num if page_num >= 0 else None,
+                content=content,
+                score=round(float(bm25_scores[idx]), 4),
+            ))
+            _ci.append(meta.get("chunk_index", 0))
+        candidates.extend(bm25_candidates)
+        _last_retrieval_stats["vec"] = len(candidates) - len(bm25_candidates)
+        _last_retrieval_stats["bm25"] = len(bm25_candidates)
+        _last_retrieval_stats["merged"] = len(candidates)
+
+    # 相似度阈值过滤：仅检查向量检索的最高分
+    # BM25 候选项已命中关键词，不经过余弦阈值筛选
+    vec_scores = [c.score for c in candidates[: len(candidates) - len(bm25_candidates)]]
+    vec_max = max(vec_scores) if vec_scores else 0.0
+    if not bm25_candidates and vec_max < MIN_SIMILARITY_SCORE:
+        return []
+
+    # 限制 Reranker 候选对数（CPU 模式下控制耗时）
+    if len(candidates) > RERANK_MAX_PAIRS:
+        sorted_pairs = sorted(enumerate(candidates), key=lambda x: x[1].score, reverse=True)
+        keep_indices = [idx for idx, _ in sorted_pairs[:RERANK_MAX_PAIRS]]
+        candidates = [candidates[i] for i in keep_indices]
+        _ci = [_ci[i] for i in keep_indices]
+        bm25_candidates = [c for c in bm25_candidates if c in candidates]
 
     # Reranker 精排：对 (query, chunk) 逐对打分
     if len(candidates) > top_k:
-        reranker = _get_reranker()
-        pairs = [(query, c.content) for c in candidates]
-        rerank_scores = reranker.predict(pairs, show_progress_bar=False)
+        try:
+            reranker = _get_reranker()
+            pairs = [(query, c.content) for c in candidates]
+            rerank_scores = reranker.predict(pairs, show_progress_bar=False)
+        except Exception as e:
+            print(f"[Reranker] 精排失败，回退到向量分数排序: {e}", flush=True)
+            rerank_scores = None
 
-        for c, rs in zip(candidates, rerank_scores):
-            c.score = round(float(rs), 4)
+        if rerank_scores is not None:
+            for c, rs in zip(candidates, rerank_scores):
+                c.score = round(float(rs), 4)
 
-        # 按 Rerank 分数降序排列，取 Top-K
-        candidates.sort(key=lambda s: s.score, reverse=True)
+            # 按 Rerank 分数降序排列，取 Top-K
+            sorted_pairs = sorted(enumerate(candidates), key=lambda x: x[1].score, reverse=True)
+            selected_indices = [idx for idx, _ in sorted_pairs[:top_k]]
+            selected = [candidates[idx] for idx in selected_indices]
+        else:
+            # Reranker 不可用，直接按原始分数（向量/BM25）排序
+            sorted_pairs = sorted(enumerate(candidates), key=lambda x: x[1].score, reverse=True)
+            selected_indices = [idx for idx, _ in sorted_pairs[:top_k]]
+            selected = [candidates[idx] for idx in selected_indices]
+    else:
+        selected = candidates[:top_k]
+        selected_indices = list(range(len(selected)))
 
-    return candidates[:top_k]
+    # 相邻块扩展：对每个精排选中的块，从 ChromaDB 查找同文档相邻 chunk_index 的块
+    expanded = list(selected)
+    seen = {c.content for c in selected}
+    for idx in selected_indices:
+        c = candidates[idx]
+        ci = _ci[idx]
+        try:
+            siblings = collection.get(
+                where={
+                    "$and": [
+                        {"document_id": c.document_id},
+                        {"$or": [
+                            {"chunk_index": ci - 1},
+                            {"chunk_index": ci + 1},
+                        ]}
+                    ]
+                },
+                include=["documents", "metadatas"],
+            )
+            if siblings.get("documents"):
+                for j, sib_text in enumerate(siblings["documents"]):
+                    if sib_text not in seen:
+                        sm = siblings["metadatas"][j]
+                        sp = sm.get("page_number", -1)
+                        expanded.append(SourceCitation(
+                            document_id=c.document_id,
+                            document_title=c.document_title,
+                            page_number=sp if sp >= 0 else None,
+                            content=sib_text,
+                            score=c.score,  # 继承所属精排块的分数
+                        ))
+                        seen.add(sib_text)
+        except Exception:
+            pass
+
+    return expanded[:top_k * 2]
 
 
 def _build_system_prompt(sources: List[SourceCitation]) -> str:
@@ -111,6 +269,7 @@ def _build_system_prompt(sources: List[SourceCitation]) -> str:
 {ref_text}
 
 回答要求：
+- 参考资料中如果包含多个并列的要点（如列举、分类、对比），必须逐条全部列出，不得省略任何一条
 - 只回答和问题直接相关的内容，不要延伸无关话题
 - 基于参考资料中与问题直接相关的信息，不编造信息
 - 引用时标注 [文件名:页码]
@@ -122,9 +281,16 @@ async def stream_chat_claude(
     question: str,
     sources: List[SourceCitation],
     temperature: float = DEFAULT_TEMPERATURE,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[str, None]:
     """通过 Claude 兼容 API 流式生成，输出 SSE 事件（使用 httpx）"""
     url = f"{ANTHROPIC_BASE_URL}/v1/messages"
+
+    messages: List[Dict[str, str]] = []
+    if history:
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
+    messages.append({"role": "user", "content": question})
 
     payload = {
         "model": CLAUDE_MODEL,
@@ -132,7 +298,7 @@ async def stream_chat_claude(
         "temperature": temperature,
         "stream": True,
         "system": system_prompt,
-        "messages": [{"role": "user", "content": question}],
+        "messages": messages,
     }
 
     headers = {
@@ -170,7 +336,7 @@ async def stream_chat_claude(
 
     # 发送溯源信息
     sources_data = [s.model_dump() for s in sources]
-    yield f"data: {json.dumps({'type': 'sources', 'content': '', 'sources': sources_data}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'sources', 'content': '', 'sources': sources_data, 'retrieval_stats': _last_retrieval_stats}, ensure_ascii=False)}\n\n"
     yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
 
 
@@ -201,7 +367,7 @@ async def stream_chat_ollama(
         return
 
     sources_data = [s.model_dump() for s in sources]
-    yield f"data: {json.dumps({'type': 'sources', 'content': '', 'sources': sources_data}, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps({'type': 'sources', 'content': '', 'sources': sources_data, 'retrieval_stats': _last_retrieval_stats}, ensure_ascii=False)}\n\n"
     yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
 
 
@@ -209,6 +375,7 @@ async def stream_chat(
     question: str,
     top_k: int = DEFAULT_TOP_K,
     temperature: float = DEFAULT_TEMPERATURE,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     流式对话生成器，输出 SSE 事件格式的字符串。
@@ -220,6 +387,10 @@ async def stream_chat(
 
     每行格式: data: {"type":"...","content":"...","sources":[...]}\n\n
     """
+    # 限制历史消息数量，防止超出上下文窗口
+    if history:
+        history = history[-20:]
+
     # Step 1: 检索相关文本块
     sources = search_chunks(question, top_k)
 
@@ -236,11 +407,18 @@ async def stream_chat(
 
     # Step 3: 根据后端选择流式生成
     if LLM_BACKEND == "ollama":
-        # Ollama 把 system prompt + question 合并成一个 prompt
-        full_prompt = f"{system_prompt}\n\n问题：{question}"
+        if history:
+            history_lines = []
+            for h in history:
+                prefix = "用户" if h["role"] == "user" else "助手"
+                history_lines.append(f"{prefix}：{h['content']}")
+            history_text = "\n\n".join(history_lines)
+            full_prompt = f"{system_prompt}\n\n历史对话：\n{history_text}\n\n问题：{question}"
+        else:
+            full_prompt = f"{system_prompt}\n\n问题：{question}"
         async for event in stream_chat_ollama(full_prompt, sources, temperature):
             yield event
     else:
         # 默认用 Claude API
-        async for event in stream_chat_claude(system_prompt, question, sources, temperature):
+        async for event in stream_chat_claude(system_prompt, question, sources, temperature, history=history):
             yield event

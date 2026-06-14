@@ -69,7 +69,7 @@ def add_kb_collection(name: str, user_id: str | None = None) -> None:
 # --- Ollama 模型 ---
 LLM_MODEL = "qwen2.5:3b"
 EMBEDDING_MODEL = "modelscope.cn/Embedding-GGUF/bge-large-zh-v1.5:latest"
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 # --- Claude API ---
 LLM_BACKEND = os.getenv("LLM_BACKEND", "ollama")
@@ -88,6 +88,8 @@ MIN_SIMILARITY_SCORE = 0.40
 
 # --- Reranker 精排 ---
 RERANK_CANDIDATE_K = 20  # 粗召回候选数，重排后取 top_k 个
+BM25_CANDIDATE_K = 20    # BM25 关键词检索候选数
+RERANK_MAX_PAIRS = 8     # Reranker 最大候选对数（CPU 模式下限制耗时，~5s）
 
 # --- 支持的文件类型 ---
 ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt", ".docx"}
