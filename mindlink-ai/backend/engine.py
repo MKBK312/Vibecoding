@@ -419,6 +419,20 @@ async def stream_chat_ollama(
     yield f"data: {json.dumps({'type': 'done', 'content': '', 'sources': []})}\n\n"
 
 
+def _enrich_query(query: str, history: Optional[List[Dict[str, str]]]) -> str:
+    """用历史对话中上一条用户消息扩展当前检索查询，解决追问代词指代问题"""
+    if not history:
+        return query
+    last_user_msg = ""
+    for h in reversed(history):
+        if h.get("role") == "user":
+            last_user_msg = h["content"]
+            break
+    if not last_user_msg or last_user_msg == query or last_user_msg in query:
+        return query
+    return f"{last_user_msg} {query}"
+
+
 async def stream_chat(
     question: str,
     top_k: int = DEFAULT_TOP_K,
@@ -439,8 +453,9 @@ async def stream_chat(
     if history:
         history = history[-20:]
 
-    # Step 1: 检索相关文本块
-    sources = search_chunks(question, top_k)
+    # Step 1: 检索相关文本块（用历史扩展查询，改善追问检索质量）
+    enriched_question = _enrich_query(question, history)
+    sources = search_chunks(enriched_question, top_k)
 
     if not sources:
         yield f"data: {json.dumps({'type': 'text', 'content': '未找到相关参考资料，请先上传文档后再提问。', 'sources': []})}\n\n"
