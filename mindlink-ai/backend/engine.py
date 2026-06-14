@@ -177,10 +177,26 @@ def search_chunks(query: str, top_k: int = DEFAULT_TOP_K) -> List[SourceCitation
     if not bm25_candidates and vec_max < MIN_SIMILARITY_SCORE:
         return []
 
-    # 限制 Reranker 候选对数（CPU 模式下控制耗时）
+    # 限制 Reranker 候选对数（各来源按比例截断，避免量纲不同导致倾斜）
+    vec_count = len(candidates) - len(bm25_candidates)
     if len(candidates) > RERANK_MAX_PAIRS:
-        sorted_pairs = sorted(enumerate(candidates), key=lambda x: x[1].score, reverse=True)
-        keep_indices = [idx for idx, _ in sorted_pairs[:RERANK_MAX_PAIRS]]
+        half = RERANK_MAX_PAIRS // 2
+        vec_limit = min(vec_count, half if len(bm25_candidates) > 0 else RERANK_MAX_PAIRS)
+        bm25_limit = RERANK_MAX_PAIRS - vec_limit
+
+        # 向量候选按余弦分数排序取前 vec_limit
+        vec_candidates = candidates[:vec_count]
+        vec_sorted = sorted(enumerate(vec_candidates), key=lambda x: x[1].score, reverse=True)
+        vec_keep = {idx for idx, _ in vec_sorted[:vec_limit]}
+
+        # BM25 候选按 BM25 分数排序取前 bm25_limit
+        bm25_sorted = sorted(
+            range(vec_count, len(candidates)),
+            key=lambda i: candidates[i].score, reverse=True
+        )
+        bm25_keep = {idx for idx in bm25_sorted[:bm25_limit]}
+
+        keep_indices = sorted(vec_keep | bm25_keep)
         candidates = [candidates[i] for i in keep_indices]
         _ci = [_ci[i] for i in keep_indices]
         bm25_candidates = [c for c in bm25_candidates if c in candidates]
